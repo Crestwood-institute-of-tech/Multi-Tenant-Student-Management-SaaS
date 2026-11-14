@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "apps.accounts.apps.AccountsConfig",
+    "apps.common.apps.CommonConfig",
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
@@ -107,6 +108,7 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Versioned API for the Student Management SaaS.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
 }
 
 LOGGING = {
