@@ -2,7 +2,7 @@
 
 ## Repository state
 
-This repository is currently a frontend-only Next.js application. The root documentation and environment template describe a larger Django + PostgreSQL + Redis + Next.js SaaS architecture, but the actual checked-in code is a minimal product landing page and supporting frontend tooling.
+This repository contains a Next.js frontend and an incremental Django backend foundation. The backend now includes PostgreSQL configuration, a custom user model, a versioned health API, OpenAPI documentation, and development Compose support. The broader SaaS architecture in the root documentation remains aspirational: tenant membership, RBAC, authentication workflows, and student-management domains are not implemented.
 
 Treat the current repository as the real implementation baseline. Do not assume the backend or full tenant model exists unless code is present.
 
@@ -16,17 +16,24 @@ Treat the current repository as the real implementation baseline. Do not assume 
 - Tailwind CSS
 - Testing Library + Jest
 
+### Backend
+
+- Python 3.14
+- Django 6.0 and Django REST Framework
+- PostgreSQL for development; isolated SQLite test settings; production hosting is not configured
+- pytest + pytest-django and Ruff
+- drf-spectacular for protected OpenAPI/Swagger documentation
+- Docker Compose for the backend and PostgreSQL development services
+
 ### Intended stack from project documentation
 
-The README and `.env.example` reference a more complete stack that includes:
+The README and `.env.example` describe a broader architecture that includes:
 
-- Django backend
-- PostgreSQL database
 - Redis and Celery
-- CORS configuration
-- Multi-tenant architecture with backend mitigation for tenant isolation
+- Full multi-tenant enforcement, authentication, and RBAC
+- Domain modules for institutions, students, enrollment, and finance
 
-Those components are not currently implemented in the repository. If a task requires them, create them intentionally and explicitly rather than assuming they already exist.
+Redis/Celery and these business capabilities are not implemented. If a task requires them, create them intentionally and explicitly rather than assuming they already exist.
 
 ## Working conventions
 
@@ -149,15 +156,28 @@ From `frontend/`:
 - `npm run typecheck`
 - `npm run build`
 
+From `backend/`:
+
+- `python -m pip install -r requirements/development.txt`
+- `python -m pytest`
+- `ruff check .`
+- `ruff format --check .`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py spectacular --file openapi.yaml --validate`
+
 ## Verification policy
 
 Do not claim a change is complete unless it has been validated with the relevant command.
 
-The current project has verified frontend health via:
+The frontend has previously verified health via:
 
 - `npm test -- --runInBand` -> PASS
 - `npm run typecheck` -> PASS
 - `npm run build` -> PASS
+
+The backend foundation is verified with its API/model tests, Ruff, Django checks,
+migration checks, OpenAPI schema validation, and local Docker/PostgreSQL checks.
 
 The project still emits a CSS warning from the Tailwind `@theme inline` syntax during build output, which should be reviewed during normal frontend maintenance but does not block the build.
 
@@ -185,4 +205,4 @@ For this repository, the current audit document is:
 
 ## Important note for future work
 
-The repository is currently a frontend prototype. Every new backend or database feature should be introduced deliberately, with explicit architecture, security, and test coverage, rather than assumed from the original product narrative.
+The backend remains a foundation rather than a complete SaaS application. Every new backend or database feature should be introduced deliberately, with explicit architecture, security, and test coverage, rather than assumed from the original product narrative.

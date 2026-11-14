@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-The repository currently contains a minimal Next.js frontend for a Student Management SaaS landing page, not a fully implemented multi-tenant academic platform. The README and environment template describe a more complete Django + PostgreSQL + Redis + Next.js architecture, but the codebase does not yet contain the corresponding backend services, models, migrations, or authentication system.
+This audit records the repository state after the backend foundation milestone (2026-11-14). The project now contains a Next.js frontend and a Django REST Framework backend foundation with PostgreSQL configuration, a UUID/email custom user model and initial migration, health/readiness endpoints, protected OpenAPI docs, and development Compose support for the API and PostgreSQL.
 
-This is not a cosmetic documentation mismatch: the implementation gap affects the architecture, security model, deployment model, and engineering roadmap.
+This is not yet a complete multi-tenant academic platform. Authentication workflows, tenant membership and isolation, RBAC, and business domains remain future work; Redis/Celery and production deployment are also not configured.
 
 ## Scope and Verification
 
@@ -12,9 +12,12 @@ The following findings are based on direct repository inspection and execution o
 
 ### Verified commands
 
-- `npm test -- --runInBand` in `frontend/` -> passed (2 tests passed)
-- `npm run typecheck` in `frontend/` -> passed
-- `npm run build` in `frontend/` -> succeeded
+- `npm test -- --runInBand`, `npm run typecheck`, and `npm run build` in `frontend/` -> previously passed
+- Backend pytest suite -> passed (9 tests)
+- Ruff lint and format checks -> passed
+- Django development/test system checks and migration drift check -> passed
+- drf-spectacular schema validation -> passed
+- Docker Compose config/build/start -> passed; PostgreSQL migrations applied; liveness and readiness returned HTTP 200
 
 ## What actually exists
 
@@ -25,6 +28,12 @@ The following findings are based on direct repository inspection and execution o
 - Tailwind CSS styling and reusable UI primitives
 - A basic landing page with product positioning content
 - Jest + Testing Library smoke tests for the home page
+- A Django 6.0 / Django REST Framework backend under `backend/`
+- Environment-based base, development, production, and test settings
+- PostgreSQL integration and an initial migration for the custom UUID/email user model
+- Versioned liveness and database-readiness endpoints
+- Protected OpenAPI schema and Swagger UI
+- pytest-django, Ruff, and Docker Compose development configuration for backend/PostgreSQL
 - Root-level project documentation in `README.md`
 - Root-level environment example in `.env.example`
 - Git remotes configured for both the fork and upstream repository
@@ -32,21 +41,19 @@ The following findings are based on direct repository inspection and execution o
 ### PARTIALLY IMPLEMENTED
 
 - Product scaffolding and product copy: present in README and home page
-- Testing infrastructure: available, but only a minimal smoke test suite exists
+- Frontend tests still cover only minimal smoke behavior; backend tests cover the initial API and user model
 - Frontend component library foundation: present, but not yet extended into a product UI
 
 ### NOT IMPLEMENTED
 
-- Django backend application
-- Database models and migrations
-- Authentication and authorization flows
+- Full authentication workflows and authorization policies
 - Multi-tenant enforcement in backend logic
 - Role-based access control
 - Student, academic, enrollment, and course management APIs
 - Reporting and analytics APIs
-- Docker / infrastructure orchestration beyond environment hints
+- Redis / Celery integration
 - CI/CD pipeline configuration
-- Deployment infrastructure
+- Production deployment infrastructure
 
 ### UNVERIFIED
 
@@ -63,31 +70,42 @@ The implemented codebase reflects this state:
 - UI library: React 19
 - Styling: Tailwind CSS
 - Language: TypeScript
-- Test stack: Jest + Testing Library
+- Frontend test stack: Jest + Testing Library
+- Backend: Python 3.14, Django 6.0, Django REST Framework
+- Backend database: PostgreSQL; test settings use in-memory SQLite
+- Backend quality/test stack: Ruff, pytest, pytest-django
+- API schema: drf-spectacular
 
-This is the actual stack present in the repository. It does not yet include the Django backend referenced by the project handover and environment template.
+The backend is a foundation, not the complete platform described in the project handover.
 
 ### Architecture mismatch
 
-The README and `.env.example` describe a world where the application includes:
+The README and `.env.example` describe a broader architecture that includes:
 
-- Django backend
-- PostgreSQL database
 - Redis + Celery
-- CORS and backend security configuration
-- Multi-tenant SaaS infrastructure
+- Complete multi-tenant SaaS infrastructure and business features
 
-However, the repository currently contains only a single frontend application and no server-side code. This should be treated as a gap in implementation rather than a completed architecture.
+The Django/PostgreSQL baseline now exists, but the broader architecture should not be treated as implemented until its remaining components are built and verified.
 
 ## Verified project health
 
 ### Current working state
 
-The current frontend passes the following checks:
+The frontend has previously passed:
 
 - Jest smoke tests: PASS
 - TypeScript type checking: PASS
 - Production build: PASS
+
+The backend foundation currently passes:
+
+- Nine API and custom-user tests: PASS
+- Ruff lint and format checks: PASS
+- Django development/test system checks: PASS
+- Migration drift check: PASS
+- OpenAPI generation and validation: PASS
+- Docker Compose configuration/build/start and PostgreSQL migration: PASS
+- Liveness and database-readiness requests in Compose: HTTP 200
 
 ### Current caveat
 
@@ -101,103 +119,91 @@ This warning does not block the build, but it should be reviewed as part of the 
 
 - Clean, modern frontend foundation using Next.js + TypeScript
 - Simple component structure and understandable project layout
-- Minimal but working testing setup
+- Initial backend settings, database integration, migrations, and test tooling
+- Health and readiness APIs distinguish process liveness from database readiness
+- Custom user model was created before the first migration
+- Development API and PostgreSQL run with loopback-only ports and a persistent database volume
 - Clear product vision and high-level domain breakdown
-- Good separation between the root project intention and the currently implemented frontend shell
+- Separation between configuration, API presentation, and applications
 
 ## Architectural weaknesses
 
-- The repo is not yet aligned with the intended SaaS platform scope
-- No backend or persistence layer exists
+- The backend is only a foundation; there are no production authentication workflows
 - No multi-tenant isolation logic is implemented
 - No tenant-aware authorization or object-level permission model exists
-- No domain-specific services or APIs are built
-- There is no evidence of deployment, migrations, or operational setup
-- The repo has not yet progressed beyond a landing-page prototype
+- No student, academic, enrollment, or finance domain APIs are built
+- Compose is development-only; there is no production deployment or CI/CD setup
+- Redis/Celery integration is deferred
 
 ## Security concerns
 
-### SECURITY REQUIREMENTS ARE NOT YET IMPLEMENTED
+### SECURITY WORK REMAINS
 
-The README’s intended security posture calls for multi-tenancy boundaries, secure auth, RBAC, and tenant isolation, but the codebase does not contain the corresponding implementation. The following concerns are therefore current and unresolved:
+The foundation provides secret-based settings, secure production defaults, explicit CORS/CSRF origin configuration, a non-querying liveness endpoint, and staff-protected API documentation. The following requirements remain unimplemented:
 
-- No authentication flow
-- No authorization enforcement
+- No user-facing authentication flow
+- No business authentication flows or domain authorization policies
 - No database-level tenant isolation
-- No secret management beyond a sample `.env.example`
-- No secure backend configuration and no secure API layer yet
-- No audit logging or security monitoring present
+- No tenant-aware permissions, RBAC, or object-level access controls
+- No production secret-management service or deployment configuration
+- No audit logging or security monitoring
 
 ## Testing gaps
 
-- Existing tests cover only the landing page rendering
-- No API tests exist
-- No permission tests exist
-- No integration tests exist
-- No database or multi-tenant tests exist
+- Frontend tests cover only minimal landing-page rendering
+- Backend tests currently cover health/readiness behavior, schema access, and custom-user manager behavior
+- No business API, tenant-isolation, authentication-flow, or permission-boundary tests exist
+- PostgreSQL migrations were verified in Compose, but no PostgreSQL-backed CI suite is configured
 - No regression tests exist for domain features that are still absent
 
 ## Technical debt
 
-- Repository claims a much larger implementation than what is present
-- Frontend is effectively a product mockup rather than an application
-- No backend contract or API design exists
-- No data model exists
-- No migration discipline is in place because no backend exists
+- Product documentation still describes features that are not implemented
+- The frontend is still a landing-page prototype
+- The API contract is limited to health and OpenAPI endpoints
+- The data model is limited to the custom user; no tenant or business models exist
 - Styling warnings indicate a config/detail cleanup opportunity
 
 ## Dependencies and infrastructure concerns
 
-- `package.json` has a reasonable frontend stack, but it is only one half of the intended architecture
-- `.env.example` clearly indicates a Django/Postgres/Redis stack, but those services are absent from the repository
-- There is no Docker compose or deployment configuration in the codebase at the time of this audit
-- CI/CD and environment governance are not yet implemented
+- Frontend and backend dependency manifests are separate and version-pinned
+- Development Compose includes only the backend and PostgreSQL; frontend remains locally run and Redis is deferred
+- Root `.env.example` contains local-only values and must not be used as production configuration
+- CI/CD and production environment governance are not yet implemented
 
 ## Recommended improvements
 
-### Priority 1: Confirm product scope
+### Priority 1: Establish tenant and identity requirements
 
-Decide whether the repository is intended to remain a frontend prototype or to be developed into the full multi-tenant SaaS described in the README.
+Design tenant ownership, membership, isolation, and authorization boundaries before creating tenant-scoped models or workflows.
 
-### Priority 2: Establish the actual architecture
-
-If this is a full production platform, create the backend skeleton first:
-
-- Django project structure
-- PostgreSQL configuration
-- Model layer and migrations
-- Authentication and RBAC
-- Tenant-aware query design
-- API versioning
-
-### Priority 3: Build the domain model incrementally
+### Priority 2: Build the domain model incrementally
 
 Implement the core modules in order:
 
 1. Institution / tenant management
-2. User management
-3. Role-based access control
-4. Student profile and academic records
-5. Course and enrollment management
-6. Reporting and analytics
+2. Tenant membership and authorization
+3. Student profile and academic records
+4. Course and enrollment management
+5. Reporting and analytics
 
-### Priority 4: Close engineering quality gaps
+### Priority 3: Close engineering quality gaps
 
 - Add CI checks for lint, typecheck, and tests
-- Add secret-handling guidance and environment validation
-- Add database migration discipline and schema review
+- Add PostgreSQL-backed CI and migration review
+- Establish production secret management and deployment configuration
 - Add coverage thresholds for meaningful domain changes
 
 ## Prioritized engineering backlog
 
-1. Decide the real product scope and align README/docs to repository reality
-2. Implement backend foundation (Django + Postgres + auth + tenant model)
-3. Add real domain modules and migrations
-4. Add API and permission tests
-5. Set up CI/CD and deployment automation
-6. Harden security controls and tenant isolation
+1. Define tenant boundaries, membership lifecycle, and security model
+2. Implement tenant-aware authorization and business authentication workflows
+3. Add institution, student, academic, and enrollment models/APIs incrementally
+4. Add PostgreSQL-backed API and permission tests
+5. Set up CI/CD and production deployment automation
+6. Add Redis/Celery only when a concrete workload requires it
 7. Resolve Tailwind/CSS warning and polish frontend quality
-8. Expand test coverage beyond landing-page smoke tests
+8. Expand frontend coverage beyond landing-page smoke tests
 
 ## Status Summary
 
@@ -205,16 +211,19 @@ Implement the core modules in order:
 |---|---|
 | Frontend foundation | VERIFIED |
 | Landing page app | VERIFIED |
+| Django/PostgreSQL backend foundation | VERIFIED |
+| Custom user model and initial migration | VERIFIED |
+| Health/readiness APIs and OpenAPI | VERIFIED |
+| Development backend/PostgreSQL Compose | VERIFIED |
 | Full multi-tenant backend | NOT IMPLEMENTED |
-| Database models and migrations | NOT IMPLEMENTED |
-| Authentication / authorization | NOT IMPLEMENTED |
+| Tenant/business database models | NOT IMPLEMENTED |
+| Authentication workflows / domain authorization | NOT IMPLEMENTED |
 | Role-based access control | NOT IMPLEMENTED |
 | Student-management domain features | NOT IMPLEMENTED |
 | Reporting and analytics | NOT IMPLEMENTED |
 | Testing infra | PARTIALLY IMPLEMENTED |
-| Documentation | PARTIALLY IMPLEMENTED |
-| Deployment/CI/CD | NOT IMPLEMENTED |
+| Production deployment/CI/CD | NOT IMPLEMENTED |
 
 ## Conclusion
 
-The repository is a solid frontend starting point, but it is not yet the realized multi-tenant student management SaaS described in the project README. The next engineering step is to choose the target architecture explicitly and begin implementing the backend and data model in a disciplined, tenant-safe way.
+The repository now has a verified backend starting point but is not yet the realized multi-tenant student management SaaS described in the project README. The next engineering step is to define tenant boundaries and identity/membership requirements before implementing tenant-scoped data or workflows.

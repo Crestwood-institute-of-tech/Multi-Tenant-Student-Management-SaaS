@@ -8,7 +8,7 @@ No tenant membership, RBAC, or student-domain workflows are implemented yet.
 ## Requirements
 
 - Python 3.14
-- PostgreSQL for local development and deployment
+- PostgreSQL for local development; production hosting is not configured
 - SQLite is used only by the isolated test settings
 
 From `backend/`, create an environment and install the pinned dependencies:
