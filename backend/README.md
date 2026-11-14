@@ -79,3 +79,22 @@ change `AUTH_USER_MODEL` casually now that its first migration exists.
 The health endpoint intentionally does not prove database readiness; use the
 readiness endpoint for that purpose. Neither response exposes connection
 details or exception messages.
+
+## Development containers
+
+From the repository root, copy `.env.example` to `.env`, then start the
+development backend and PostgreSQL:
+
+```powershell
+docker compose up --build --wait
+docker compose exec backend python manage.py migrate
+```
+
+The API is bound to `127.0.0.1:8000`; PostgreSQL is bound to loopback on
+`DB_HOST_PORT` (default `5432`). The PostgreSQL data volume persists across
+container restarts. The backend connects to the `db` service on the Compose
+network. The frontend remains a local Next.js development process, and Redis
+is intentionally deferred.
+
+This Compose configuration and Django `runserver` image are for local
+development only. They are not a production deployment configuration.
