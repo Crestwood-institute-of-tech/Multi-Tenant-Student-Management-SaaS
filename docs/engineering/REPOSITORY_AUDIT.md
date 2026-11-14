@@ -171,39 +171,17 @@ The foundation provides secret-based settings, secure production defaults, expli
 - Root `.env.example` contains local-only values and must not be used as production configuration
 - CI/CD and production environment governance are not yet implemented
 
-## Recommended improvements
+## Architecture and backlog
 
-### Priority 1: Establish tenant and identity requirements
+The proposed shared-schema tenant boundary, membership lifecycle, request
+resolution, and isolation requirements are documented in
+[`../architecture/MULTI_TENANCY.md`](../architecture/MULTI_TENANCY.md). This is
+a design proposal for review; tenant models and authorization remain
+unimplemented.
 
-Design tenant ownership, membership, isolation, and authorization boundaries before creating tenant-scoped models or workflows.
-
-### Priority 2: Build the domain model incrementally
-
-Implement the core modules in order:
-
-1. Institution / tenant management
-2. Tenant membership and authorization
-3. Student profile and academic records
-4. Course and enrollment management
-5. Reporting and analytics
-
-### Priority 3: Close engineering quality gaps
-
-- Add CI checks for lint, typecheck, and tests
-- Add PostgreSQL-backed CI and migration review
-- Establish production secret management and deployment configuration
-- Add coverage thresholds for meaningful domain changes
-
-## Prioritized engineering backlog
-
-1. Define tenant boundaries, membership lifecycle, and security model
-2. Implement tenant-aware authorization and business authentication workflows
-3. Add institution, student, academic, and enrollment models/APIs incrementally
-4. Add PostgreSQL-backed API and permission tests
-5. Set up CI/CD and production deployment automation
-6. Add Redis/Celery only when a concrete workload requires it
-7. Resolve Tailwind/CSS warning and polish frontend quality
-8. Expand frontend coverage beyond landing-page smoke tests
+The dependency-aware implementation plan, including CI/CD, authentication,
+domain modules, observability, backups, and subscription billing, is maintained
+in [`ENGINEERING_BACKLOG.md`](./ENGINEERING_BACKLOG.md).
 
 ## Status Summary
 
@@ -226,4 +204,9 @@ Implement the core modules in order:
 
 ## Conclusion
 
-The repository now has a verified backend starting point but is not yet the realized multi-tenant student management SaaS described in the project README. The next engineering step is to define tenant boundaries and identity/membership requirements before implementing tenant-scoped data or workflows.
+The repository now has a verified backend starting point but is not yet the
+realized multi-tenant student management SaaS described in the project README.
+The tenant architecture is now documented as a proposal and requires review;
+the next implementation step is to approve the outstanding decisions and
+establish authentication, CI, and PostgreSQL-backed isolation tests before
+creating tenant-scoped data or workflows.
