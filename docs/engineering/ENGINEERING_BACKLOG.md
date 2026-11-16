@@ -12,8 +12,8 @@ contains only the initial Django foundation; see
 | Priority | Work item | Dependencies / exit criteria |
 |---|---|---|
 | P0 | Review and approve the proposed tenant architecture | No schema work until role semantics, invitation lifecycle, slug policy, authentication direction, and platform support boundaries are agreed |
-| P0 | Establish backend CI/CD checks | Independent; run pytest, Ruff lint/format, Django checks, migration drift checks, and OpenAPI validation on changes; protect main with required checks |
-| P0 | Add PostgreSQL-backed CI and migration validation | Depends on CI baseline; verify migrations and tenant/permission behavior using PostgreSQL, not only SQLite |
+| P0 | Establish automated backend and frontend CI quality gates | **Completed:** separate PR/push workflows run backend and frontend checks; configure required checks on `main` per [CI guidance](./CI.md). This item does not include deployment automation |
+| P0 | Run backend tests and migration checks against PostgreSQL in CI | **Completed:** CI explicitly selects PostgreSQL test settings and executes system, migration, and pytest checks against a PostgreSQL service; tenant-specific tests remain future work |
 | P0 | Define tenant-isolation test fixtures and security regression matrix | Depends on approved tenant boundaries; tests must cover at least two institutions, a multi-institution user, roles, nested references, and denied access |
 | P0 | Select and design authentication workflows | Confirm email verification, sign-in/session or token model, password reset, rate limiting, account recovery, and invite acceptance requirements before membership flows |
 

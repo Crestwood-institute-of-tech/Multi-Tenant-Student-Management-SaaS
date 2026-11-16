@@ -9,7 +9,8 @@ No tenant membership, RBAC, or student-domain workflows are implemented yet.
 
 - Python 3.14
 - PostgreSQL for local development; production hosting is not configured
-- SQLite is used only by the isolated test settings
+- SQLite is used by the default isolated test settings; PostgreSQL test
+  settings are available for CI and database-specific local verification
 
 From `backend/`, create an environment and install the pinned dependencies:
 
@@ -32,6 +33,8 @@ Never use its development values in a deployed environment.
 - `config.settings.production` requires a non-placeholder secret and explicit
   allowed hosts, disables debug, and enables HTTPS-related security settings.
 - `config.settings.test` uses an in-memory SQLite database and a test-only key.
+- `config.settings.test_postgres` keeps the test settings but uses the
+  PostgreSQL database configuration from `config.settings.base`.
 
 Run production checks only with deployment-specific environment variables set:
 
@@ -56,9 +59,14 @@ python manage.py spectacular --file openapi.yaml --validate
 ```
 
 Pytest selects `config.settings.test` from `pyproject.toml`; its database is
-isolated from the configured PostgreSQL service. Development and production
-settings use PostgreSQL. Create and review migrations deliberately, and do not
-change `AUTH_USER_MODEL` casually now that its first migration exists.
+isolated from the configured PostgreSQL service. Use
+`python -m pytest --ds=config.settings.test_postgres -vv` with PostgreSQL
+environment variables set to run the suite against PostgreSQL, as CI does.
+Development and production settings use PostgreSQL. Create and review
+migrations deliberately, and do not change `AUTH_USER_MODEL` casually now
+that its first migration exists. See
+[`../docs/engineering/CI.md`](../docs/engineering/CI.md) for workflow details
+and complete local reproduction instructions.
 
 ## API integration
 
