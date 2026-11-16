@@ -3,6 +3,15 @@
 **Status:** Proposed; review required before migrations or tenant-scoped features
 **Scope:** Initial shared-schema tenancy for the Django modular monolith
 
+The assumptions and unresolved identity, lifecycle, authentication,
+authorization, invitation, ownership, tenant-resolution, and platform-access
+choices below remain provisional. Review the
+[tenant and authentication decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md)
+for the alternatives, trade-offs, proposed defaults, and required project-owner
+approvals. Neither this proposal nor a merged documentation PR constitutes
+approval; do not treat its summary table as an implementation contract until
+the relevant decisions are explicitly accepted.
+
 ## Context and objectives
 
 The repository currently has a Django 6 / Django REST Framework foundation,

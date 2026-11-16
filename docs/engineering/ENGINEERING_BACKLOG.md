@@ -11,15 +11,18 @@ contains only the initial Django foundation; see
 
 | Priority | Work item | Dependencies / exit criteria |
 |---|---|---|
-| P0 | Review and approve the proposed tenant architecture | No schema work until role semantics, invitation lifecycle, slug policy, authentication direction, and platform support boundaries are agreed |
+| P0 | Review and approve the tenant and authentication decision register | Explicitly accept or amend each decision in [the register](../architecture/decisions/TENANT_AND_AUTH_DECISIONS.md), including the role/action matrix; no schema, auth, invitation, or tenant API work before approval |
+| P0 | Review and approve the proposed tenant architecture | Depends on the decision register; no schema work until institution lifecycle, role semantics, invitation lifecycle, slug policy, authentication direction, ownership safeguards, and platform support boundaries are agreed |
 | P0 | Establish automated backend and frontend CI quality gates | **Completed:** separate PR/push workflows run backend and frontend checks; configure required checks on `main` per [CI guidance](./CI.md). This item does not include deployment automation |
 | P0 | Run backend tests and migration checks against PostgreSQL in CI | **Completed:** CI explicitly selects PostgreSQL test settings and executes system, migration, and pytest checks against a PostgreSQL service; tenant-specific tests remain future work |
 | P0 | Document the tenant-isolation test strategy and regression matrix | **Completed as documentation only:** [strategy](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md) defines threats, test cases, reusable fixtures, database requirements, and phased implementation; no tenant isolation tests are implemented |
 | P0 | Implement tenant-isolation fixtures and regression tests | Depends on approved tenant/authentication contracts and tenant models/APIs; add two-institution, multi-membership, role, query, relationship, and denied-access tests; run database-specific cases in PostgreSQL CI |
-| P0 | Select and design authentication workflows | Confirm email verification, sign-in/session or token model, password reset, rate limiting, account recovery, and invite acceptance requirements before membership flows |
+| P0 | Select and design authentication workflows | Depends on approved authentication decisions; confirm same-origin deployment, cookie/CSRF contract, session expiry/revocation, email verification, password reset, rate limiting, account recovery, and invite acceptance before membership flows |
 
-**Exit gate:** architecture decisions accepted, auth direction selected, CI
-checks in place, and the tenant security test plan agreed. No business API should
+**Exit gate:** relevant decision-register entries explicitly accepted by the
+project owner, auth direction selected, CI checks in place, and the tenant
+security test plan agreed. The decision register and test strategy are
+documentation, not approval or implemented controls. No business API should
 ship before the tenant isolation tests are enforceable in CI.
 
 ## Next: identity, tenancy, and institution administration
