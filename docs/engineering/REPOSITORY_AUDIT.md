@@ -2,7 +2,12 @@
 
 ## Executive Summary
 
-This audit records the repository state after the backend foundation milestone (2026-11-14). The project now contains a Next.js frontend and a Django REST Framework backend foundation with PostgreSQL configuration, a UUID/email custom user model and initial migration, health/readiness endpoints, protected OpenAPI docs, and development Compose support for the API and PostgreSQL.
+This audit records the repository state after the backend foundation milestone
+(2026-11-14), updated on 2026-11-16 to reflect the merged CI quality gates and
+tenant test strategy. The project now contains a Next.js frontend and a Django
+REST Framework backend foundation with PostgreSQL configuration, a UUID/email
+custom user model and initial migration, health/readiness endpoints, protected
+OpenAPI docs, and development Compose support for the API and PostgreSQL.
 
 This is not yet a complete multi-tenant academic platform. Authentication workflows, tenant membership and isolation, RBAC, and business domains remain future work; Redis/Celery and production deployment are also not configured.
 
@@ -29,11 +34,13 @@ The following findings are based on direct repository inspection and execution o
 - A basic landing page with product positioning content
 - Jest + Testing Library smoke tests for the home page
 - A Django 6.0 / Django REST Framework backend under `backend/`
-- Environment-based base, development, production, and test settings
+- Environment-based base, development, production, SQLite test, and
+  PostgreSQL test settings
 - PostgreSQL integration and an initial migration for the custom UUID/email user model
 - Versioned liveness and database-readiness endpoints
 - Protected OpenAPI schema and Swagger UI
 - pytest-django, Ruff, and Docker Compose development configuration for backend/PostgreSQL
+- Separate PostgreSQL-backed backend and frontend GitHub Actions quality-gate workflows
 - Root-level project documentation in `README.md`
 - Root-level environment example in `.env.example`
 - Git remotes configured for both the fork and upstream repository
@@ -52,7 +59,7 @@ The following findings are based on direct repository inspection and execution o
 - Student, academic, enrollment, and course management APIs
 - Reporting and analytics APIs
 - Redis / Celery integration
-- CI/CD pipeline configuration
+- Production deployment and release pipeline configuration
 - Production deployment infrastructure
 
 ### UNVERIFIED
@@ -72,7 +79,8 @@ The implemented codebase reflects this state:
 - Language: TypeScript
 - Frontend test stack: Jest + Testing Library
 - Backend: Python 3.14, Django 6.0, Django REST Framework
-- Backend database: PostgreSQL; test settings use in-memory SQLite
+- Backend development database: PostgreSQL; default local pytest settings use
+  in-memory SQLite; CI explicitly selects PostgreSQL test settings
 - Backend quality/test stack: Ruff, pytest, pytest-django
 - API schema: drf-spectacular
 
@@ -132,7 +140,9 @@ This warning does not block the build, but it should be reviewed as part of the 
 - No multi-tenant isolation logic is implemented
 - No tenant-aware authorization or object-level permission model exists
 - No student, academic, enrollment, or finance domain APIs are built
-- Compose is development-only; there is no production deployment or CI/CD setup
+- Compose is development-only; PostgreSQL-backed backend and frontend CI
+  quality-gate workflows now exist, but no production deployment or release
+  pipeline is configured
 - Redis/Celery integration is deferred
 
 ## Security concerns
@@ -153,7 +163,9 @@ The foundation provides secret-based settings, secure production defaults, expli
 - Frontend tests cover only minimal landing-page rendering
 - Backend tests currently cover health/readiness behavior, schema access, and custom-user manager behavior
 - No business API, tenant-isolation, authentication-flow, or permission-boundary tests exist
-- PostgreSQL migrations were verified in Compose, but no PostgreSQL-backed CI suite is configured
+- PostgreSQL-backed CI quality gates are configured; tenant-specific
+  authorization, isolation, relationship, and operational regression tests do
+  not yet exist
 - No regression tests exist for domain features that are still absent
 
 ## Technical debt
@@ -169,7 +181,7 @@ The foundation provides secret-based settings, secure production defaults, expli
 - Frontend and backend dependency manifests are separate and version-pinned
 - Development Compose includes only the backend and PostgreSQL; frontend remains locally run and Redis is deferred
 - Root `.env.example` contains local-only values and must not be used as production configuration
-- CI/CD and production environment governance are not yet implemented
+- CI quality gates exist; deployment automation and production environment governance are not yet implemented
 
 ## Architecture and backlog
 
@@ -177,7 +189,9 @@ The proposed shared-schema tenant boundary, membership lifecycle, request
 resolution, and isolation requirements are documented in
 [`../architecture/MULTI_TENANCY.md`](../architecture/MULTI_TENANCY.md). This is
 a design proposal for review; tenant models and authorization remain
-unimplemented.
+unimplemented. The threat model and planned regression matrix are documented
+in [`../architecture/TENANT_ISOLATION_TEST_STRATEGY.md`](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md);
+the strategy does not mean tenant tests or enforcement exist.
 
 The dependency-aware implementation plan, including CI/CD, authentication,
 domain modules, observability, backups, and subscription billing, is maintained
@@ -200,13 +214,17 @@ in [`ENGINEERING_BACKLOG.md`](./ENGINEERING_BACKLOG.md).
 | Student-management domain features | NOT IMPLEMENTED |
 | Reporting and analytics | NOT IMPLEMENTED |
 | Testing infra | PARTIALLY IMPLEMENTED |
-| Production deployment/CI/CD | NOT IMPLEMENTED |
+| CI quality gates | CONFIGURED; tenant-specific tests not implemented |
+| Production deployment/release pipeline | NOT IMPLEMENTED |
 
 ## Conclusion
 
 The repository now has a verified backend starting point but is not yet the
 realized multi-tenant student management SaaS described in the project README.
-The tenant architecture is now documented as a proposal and requires review;
-the next implementation step is to approve the outstanding decisions and
-establish authentication, CI, and PostgreSQL-backed isolation tests before
-creating tenant-scoped data or workflows.
+The tenant architecture is documented as a proposal and still requires review.
+Backend and frontend CI quality gates, including PostgreSQL-backed test
+settings, are now configured. The next steps are to resolve architecture and
+authentication decisions, implement tenant models and authorization
+deliberately, and build the regression suite in
+[`../architecture/TENANT_ISOLATION_TEST_STRATEGY.md`](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md)
+before exposing tenant-scoped business workflows.
