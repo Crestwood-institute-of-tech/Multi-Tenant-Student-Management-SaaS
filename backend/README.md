@@ -88,6 +88,100 @@ The health endpoint intentionally does not prove database readiness; use the
 readiness endpoint for that purpose. Neither response exposes connection
 details or exception messages.
 
+## Browser session authentication
+
+The backend uses Django's database-backed sessions and DRF
+`SessionAuthentication`; it does not issue JWTs or expose session identifiers
+in JSON. Authentication identifies a global user only. Institution
+memberships, tenant resolution, tenant authorization, registration, email
+verification, password recovery, MFA, and account/device management remain
+unimplemented.
+
+Versioned endpoints:
+
+| Method | Path | Behavior |
+|---|---|---|
+| `GET` | `/api/v1/auth/csrf/` | Returns `{"csrfToken":"..."}` and sets the CSRF cookie |
+| `POST` | `/api/v1/auth/login/` | Accepts `{"email":"...","password":"..."}`; success returns `{"user":{"id":"...","email":"..."}}`; invalid credentials return the same generic `401` |
+| `POST` | `/api/v1/auth/logout/` | Requires an authenticated session and CSRF proof; invalidates the current session |
+| `GET` | `/api/v1/auth/me/` | Returns only the authenticated user's UUID and email |
+
+Unauthenticated requests to protected endpoints are denied (`403` with DRF's
+session authentication). Login credential failures are `401`; missing or
+invalid CSRF proof is `403`; malformed login input is `400`; throttled login
+attempts return `429`. The login response deliberately does not distinguish an
+unknown email, wrong password, or inactive account.
+
+The frontend API client includes cookies on requests and obtains a fresh
+masked CSRF token before each unsafe request, submitting it in `X-CSRFToken`.
+The CSRF endpoint also returns the token in JSON because both the session and
+CSRF cookies are `HttpOnly`. Do not copy session identifiers or passwords
+into browser storage. The existing `NEXT_PUBLIC_API_BASE_URL` is a public URL,
+not a secret.
+
+### Cookie, CSRF, and deployment assumptions
+
+- Prefer serving Next.js and Django under the same origin. The local default
+  uses `http://localhost:3000` for Next.js and `http://localhost:8000` for
+  Django; development explicitly allows those origins with credentialed CORS.
+  Use the same hostname for both local URLs (`localhost` or `127.0.0.1`);
+  browsers treat those hostnames as different sites for `SameSite` cookies.
+- If deployment uses separate origins, configure exact
+  `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`; in production only set
+  `CORS_ALLOW_CREDENTIALS=True` when required and never combine it with
+  wildcard origins. The current cookies use `SameSite=Lax`; cross-site
+  deployments are not supported by this configuration.
+- Session and CSRF cookies are host-only (`*_COOKIE_DOMAIN=None`), use path
+  `/`, and `SameSite=Lax`. Both are `Secure` in production and the session
+  cookie is always `HttpOnly`. The CSRF cookie is also `HttpOnly`; frontend
+  code must use the CSRF endpoint response, not read the cookie.
+- Production redirects to HTTPS and enables secure cookies. The reverse proxy
+  must overwrite `X-Forwarded-Proto` with the actual client protocol before
+  Django trusts `SECURE_PROXY_SSL_HEADER`; do not expose Django directly to
+  untrusted forwarded headers. The production environment must set an
+  explicit secret, allowed hosts, and appropriate trusted origins.
+- `SESSION_COOKIE_AGE` defaults to a one-hour sliding inactivity expiry;
+  authenticated sessions also expire after the 12-hour absolute maximum in
+  `AUTH_SESSION_ABSOLUTE_AGE`. `SESSION_SAVE_EVERY_REQUEST` refreshes the
+  inactivity window. Schedule Django's `clearsessions` management command to
+  remove expired database session rows in deployed environments.
+- CSRF protection applies to login and to unsafe requests authenticated by
+  `SessionAuthentication`; the CSRF failure response is generic. Do not
+  disable CSRF middleware or exempt future cookie-authenticated write APIs.
+
+### Login throttling and remaining limitations
+
+Login uses DRF `ScopedRateThrottle`, defaulting to `AUTH_LOGIN_RATE=10/minute`
+per client IP. The repository has no shared cache or distributed rate-limiting
+service; Django's default local-memory cache is process-local, so multiple
+workers do not share counters. IP throttling also does not stop distributed
+credential stuffing and depends on a trusted proxy sanitizing forwarded IP
+headers. Treat it as a basic abuse control, not robust production rate
+limiting; configure and verify a shared cache/gateway policy before a
+multi-worker production deployment. No account lockout or password recovery
+workflow is implemented.
+
+### Run authentication tests
+
+From `backend/`, apply migrations (the session table uses Django's built-in
+sessions app), then run the auth tests locally against SQLite:
+
+```powershell
+python manage.py migrate
+python -m pytest tests\test_authentication_api.py -vv
+```
+
+The tests use Django's CSRF-enforcing client. To verify the complete suite on
+PostgreSQL, start the development database and set the documented PostgreSQL
+environment before running:
+
+```powershell
+python -m pytest --ds=config.settings.test_postgres -vv
+```
+
+CI runs the backend suite against PostgreSQL. SQLite remains the fast local
+default; it is not evidence for PostgreSQL concurrency or locking behavior.
+
 ## Development containers
 
 From the repository root, copy `.env.example` to `.env`, then start the
