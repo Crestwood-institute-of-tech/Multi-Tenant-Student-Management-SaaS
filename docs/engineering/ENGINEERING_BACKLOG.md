@@ -14,7 +14,8 @@ contains only the initial Django foundation; see
 | P0 | Review and approve the proposed tenant architecture | No schema work until role semantics, invitation lifecycle, slug policy, authentication direction, and platform support boundaries are agreed |
 | P0 | Establish automated backend and frontend CI quality gates | **Completed:** separate PR/push workflows run backend and frontend checks; configure required checks on `main` per [CI guidance](./CI.md). This item does not include deployment automation |
 | P0 | Run backend tests and migration checks against PostgreSQL in CI | **Completed:** CI explicitly selects PostgreSQL test settings and executes system, migration, and pytest checks against a PostgreSQL service; tenant-specific tests remain future work |
-| P0 | Define tenant-isolation test fixtures and security regression matrix | Depends on approved tenant boundaries; tests must cover at least two institutions, a multi-institution user, roles, nested references, and denied access |
+| P0 | Document the tenant-isolation test strategy and regression matrix | **Completed as documentation only:** [strategy](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md) defines threats, test cases, reusable fixtures, database requirements, and phased implementation; no tenant isolation tests are implemented |
+| P0 | Implement tenant-isolation fixtures and regression tests | Depends on approved tenant/authentication contracts and tenant models/APIs; add two-institution, multi-membership, role, query, relationship, and denied-access tests; run database-specific cases in PostgreSQL CI |
 | P0 | Select and design authentication workflows | Confirm email verification, sign-in/session or token model, password reset, rate limiting, account recovery, and invite acceptance requirements before membership flows |
 
 **Exit gate:** architecture decisions accepted, auth direction selected, CI
