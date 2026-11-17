@@ -17,7 +17,7 @@ contains only the initial Django foundation; see
 | P0 | Run backend tests and migration checks against PostgreSQL in CI | **Completed:** CI explicitly selects PostgreSQL test settings and executes system, migration, and pytest checks against a PostgreSQL service; tenant-specific tests remain future work |
 | P0 | Document the tenant-isolation test strategy and regression matrix | **Completed as documentation only:** [strategy](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md) defines threats, test cases, reusable fixtures, database requirements, and phased implementation; no tenant isolation tests are implemented |
 | P0 | Implement tenant-isolation fixtures and regression tests | Depends on approved tenant/authentication contracts and tenant models/APIs; add two-institution, multi-membership, role, query, relationship, and denied-access tests; run database-specific cases in PostgreSQL CI |
-| P0 | Select and design authentication workflows | Depends on approved authentication decisions; confirm same-origin deployment, cookie/CSRF contract, session expiry/revocation, email verification, password reset, rate limiting, account recovery, and invite acceptance before membership flows |
+| P0 | Approve the authentication contract and remaining account workflows | The session-based browser foundation is implemented, but decision `AUTH-01` remains Proposed in the [decision register](../architecture/decisions/TENANT_AND_AUTH_DECISIONS.md); approve the contract and decide email verification, recovery, MFA, and operational abuse controls before account lifecycle or membership flows |
 
 **Exit gate:** relevant decision-register entries explicitly accepted by the
 project owner, auth direction selected, CI checks in place, and the tenant
@@ -29,7 +29,7 @@ ship before the tenant isolation tests are enforceable in CI.
 
 | Priority | Work item | Dependencies / exit criteria |
 |---|---|---|
-| P1 | Implement authentication and account lifecycle | Depends on auth design; verified email, secure login/logout, recovery, account disablement, abuse controls, and API tests |
+| P1 | Implement authentication and account lifecycle | **Partially implemented:** session login/logout/current-user/CSRF endpoints, session expiry, and IP throttling exist; verified email, recovery, MFA, per-device management, stronger shared rate limiting, and broader account lifecycle remain |
 | P1 | Implement institution, invitation, and membership models | Depends on architecture approval and auth identity; reviewed migrations, constraints, lifecycle transitions, invitation token hashing/expiry, audit events, and last-owner protection |
 | P1 | Implement tenant resolution and authorization policy | Depends on active identity and membership model; path-based context, current-membership check, default-deny policies, role/action matrix, and object-level checks |
 | P1 | Implement institution management APIs | Depends on tenant resolution and authorization; create/update/status rules, slug policy, member listing/invites, role assignment, and cross-tenant denial tests |
