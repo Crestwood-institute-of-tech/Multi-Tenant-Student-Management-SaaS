@@ -200,7 +200,8 @@ authentication. The following requirements remain unimplemented:
 - The frontend is still a landing-page prototype
 - The API contract currently covers authentication, health, and OpenAPI
   endpoints; no tenant or business APIs exist
-- The data model is limited to the custom user; no tenant or business models exist
+- The data model includes the custom user plus `Institution` and `Membership`
+  foundation models; tenant resolution, authorization, and business models remain absent
 - Styling warnings indicate a config/detail cleanup opportunity
 
 ## Dependencies and infrastructure concerns
@@ -215,7 +216,7 @@ authentication. The following requirements remain unimplemented:
 The proposed shared-schema tenant boundary, membership lifecycle, request
 resolution, and isolation requirements are documented in
 [`../architecture/MULTI_TENANCY.md`](../architecture/MULTI_TENANCY.md). This is
-a design proposal for review; tenant models and authorization remain
+a design proposal for review; tenant resolution and authorization remain
 unimplemented. The threat model and planned regression matrix are documented
 in [`../architecture/TENANT_ISOLATION_TEST_STRATEGY.md`](../architecture/TENANT_ISOLATION_TEST_STRATEGY.md);
 the strategy does not mean tenant tests or enforcement exist.
@@ -235,8 +236,9 @@ in [`ENGINEERING_BACKLOG.md`](./ENGINEERING_BACKLOG.md).
 | Health/readiness APIs and OpenAPI | VERIFIED |
 | Development backend/PostgreSQL Compose | VERIFIED |
 | Full multi-tenant backend | NOT IMPLEMENTED |
-| Tenant/business database models | NOT IMPLEMENTED |
-| Basic session authentication | PARTIALLY IMPLEMENTED |
+| Institution and membership database models | VERIFIED |
+| Tenant/business database models | PARTIALLY IMPLEMENTED |
+| Session authentication | IMPLEMENTED |
 | Recovery, email verification, MFA, and full account lifecycle | NOT IMPLEMENTED |
 | Tenant/domain authorization | NOT IMPLEMENTED |
 | Role-based access control | NOT IMPLEMENTED |
@@ -248,8 +250,8 @@ in [`ENGINEERING_BACKLOG.md`](./ENGINEERING_BACKLOG.md).
 
 ## Conclusion
 
-The repository now has a verified backend starting point and a limited session
-authentication API, but is not yet the
+The repository now has a verified backend starting point, session
+authentication, and Institution/Membership foundation models, but is not yet the
 realized multi-tenant student management SaaS described in the project README.
 The tenant architecture is documented as a proposal and still requires review.
 Backend and frontend CI quality gates, including PostgreSQL-backed test
