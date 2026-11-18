@@ -5,8 +5,9 @@ implementation. No decision in this register is accepted.
 **Scope:** Initial shared-schema Django/DRF backend with a Next.js frontend.
 **Baseline:** The repository currently has a global UUID/email Django user,
 PostgreSQL configuration, session and CSRF middleware, and protected health and
-OpenAPI routes. It has no institution, membership, invitation, application
-authentication workflow, or tenant authorization implementation.
+OpenAPI routes. It also has implemented Institution and Membership foundation
+models, but no invitation, tenant-resolution, or tenant authorization
+implementation. All decisions remain Proposed.
 
 This register makes the unresolved contracts reviewable. The proposed
 multi-tenancy architecture and the 47-case isolation test strategy are

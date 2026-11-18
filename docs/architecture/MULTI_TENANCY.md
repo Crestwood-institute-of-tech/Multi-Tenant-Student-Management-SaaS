@@ -36,8 +36,10 @@ institutions, and institution identifiers are locators, never credentials.
 
 ### Out of scope
 
-This proposal does not add models, migrations, authentication packages, tenant
-middleware, Row-Level Security, business modules, or deployment infrastructure.
+This proposal does not add tenant middleware, authorization policies,
+invitations, Row-Level Security, business modules, or deployment infrastructure.
+Institution and Membership foundation models and a migration now exist, but
+tenant resolution and tenant-scoped enforcement have not been implemented.
 Schema-per-tenant and database-per-tenant are deliberately deferred.
 
 ## Architectural decisions
@@ -53,8 +55,9 @@ Schema-per-tenant and database-per-tenant are deliberately deferred.
 | Enforcement | Resolve tenant and membership at the API boundary; scope querysets and nested lookups to that tenant |
 | Lifecycle | Suspend or close records rather than deleting institutions, memberships, or audit history |
 
-These are proposals pending review. Existing `apps.accounts.User` and its first
-migration remain the implementation baseline; no tenant schema exists today.
+These are proposals pending review. The existing `apps.accounts.User` migration
+and the Institution/Membership foundation migration are implementation
+baseline; tenant resolution and tenant-scoped authorization do not exist yet.
 
 ## Proposed entities and lifecycle
 
@@ -66,6 +69,9 @@ Proposed fields:
 - `name`: required institution display name.
 - `slug`: required, normalized, globally unique URL identifier. Slug changes need
   an explicit redirect/compatibility policy; it is not an authorization secret.
+  Ordinary model saves enforce slug immutability; `QuerySet.update()`,
+  `bulk_update()`, and raw SQL bypass this model-level rule and are not protected
+  by the portable database constraints.
 - `institution_type`: constrained value such as `school`, `college`,
   `university`, or `other`.
 - `status`: `onboarding`, `active`, `suspended`, or `closed`.
