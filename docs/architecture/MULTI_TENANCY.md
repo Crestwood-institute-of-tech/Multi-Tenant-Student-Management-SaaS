@@ -15,10 +15,11 @@ the relevant decisions are explicitly accepted.
 ## Context and objectives
 
 The repository currently has a Django 6 / Django REST Framework foundation,
-PostgreSQL configuration, and a UUID/email user model. It does not yet implement
-authentication workflows, institutions, memberships, tenant-aware authorization,
-or business APIs. This document proposes those boundaries; it does not claim
-they are implemented or production-ready.
+PostgreSQL configuration, a UUID/email user model, session authentication,
+Institution and Membership models, tenant resolution, and a reusable
+institution-role permission foundation. It does not implement business APIs or
+object-level authorization. This document proposes broader boundaries; it does
+not claim they are fully implemented or production-ready.
 
 The initial design must support many schools, colleges, and universities in one
 application and PostgreSQL database while ensuring that every tenant-scoped
@@ -36,11 +37,12 @@ institutions, and institution identifiers are locators, never credentials.
 
 ### Out of scope
 
-This proposal does not add tenant middleware, authorization policies,
-invitations, Row-Level Security, business modules, or deployment infrastructure.
-Institution and Membership foundation models and a migration now exist, but
-tenant resolution and tenant-scoped enforcement have not been implemented.
-Schema-per-tenant and database-per-tenant are deliberately deferred.
+This proposal does not define or implement a final role/action policy matrix,
+object-level authorization, invitations, Row-Level Security, business modules,
+or deployment infrastructure. The repository has Institution and Membership
+foundation models and implements path-based tenant resolution plus a generic
+role permission boundary. Schema-per-tenant and database-per-tenant are
+deliberately deferred.
 
 ## Architectural decisions
 
@@ -55,9 +57,10 @@ Schema-per-tenant and database-per-tenant are deliberately deferred.
 | Enforcement | Resolve tenant and membership at the API boundary; scope querysets and nested lookups to that tenant |
 | Lifecycle | Suspend or close records rather than deleting institutions, memberships, or audit history |
 
-These are proposals pending review. The existing `apps.accounts.User` migration
-and the Institution/Membership foundation migration are implementation
-baseline; tenant resolution and tenant-scoped authorization do not exist yet.
+These are proposals pending review. The existing user and
+Institution/Membership migrations are implementation baseline. Tenant
+resolution and a reusable membership-role permission exist; a project-approved
+role/action matrix and object-level tenant authorization do not.
 
 ## Proposed entities and lifecycle
 
@@ -167,6 +170,22 @@ institution.
 
 ## Roles and authorization
 
+The implemented `Membership.Role` choices are `institution_admin`,
+`academic_staff`, `finance_staff`, `student`, and `guardian`. The role/action
+tables below remain proposals; they do not amend those model choices or approve
+any role/action grant.
+
+`InstitutionRolePermission` is a reusable default-deny DRF permission. A
+protected view composes it after `IsAuthenticated` and
+`InstitutionTenantPermission`, then declares a non-empty immutable
+`allowed_membership_roles` tuple or frozenset on that view. Missing, empty, or
+unknown declarations are denied. The permission requires the request-local
+`TenantContext` produced by tenant resolution and re-queries the active
+membership for that user and institution on every request before comparing its
+stored role. Client-supplied role, institution, and membership values are not
+authorization inputs. This is a function-level foundation only: it does not
+establish a role/action matrix, role hierarchy, or object-level permissions.
+
 Start with a small, institution-scoped role value on `InstitutionMembership`:
 
 | Role | Initial scope |
@@ -215,8 +234,10 @@ At this boundary, `draft` and `active` institutions are eligible for ordinary
 tenant context access, while `suspended` and `closed` institutions are
 unavailable. Only active memberships grant access. Unknown or unavailable
 institutions return 404, while non-member and suspended or removed memberships
-return 403. This behavior implements tenant resolution only; role/action and
-object-level authorization remain future work.
+return 403. This behavior implements tenant resolution. The separate role-permission
+foundation is available for future protected views; the context endpoint itself
+does not apply role/action restrictions. A project-approved role/action policy
+and object-level authorization remain future work.
 
 Use a canonical tenant-scoped URL such as
 `/api/v1/institutions/{institution_slug}/students/`. The authenticated user's
