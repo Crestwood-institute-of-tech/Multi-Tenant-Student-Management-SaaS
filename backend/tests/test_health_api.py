@@ -68,3 +68,4 @@ def test_openapi_schema_is_admin_protected_and_contains_health_routes(api_client
     assert "/api/v1/auth/login/" in schema["paths"]
     assert "/api/v1/auth/logout/" in schema["paths"]
     assert "/api/v1/auth/me/" in schema["paths"]
+    assert "/api/v1/institutions/{institution_slug}/context/" in schema["paths"]

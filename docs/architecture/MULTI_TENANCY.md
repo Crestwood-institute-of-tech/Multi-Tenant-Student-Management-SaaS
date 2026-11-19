@@ -204,6 +204,20 @@ Use a combination, but do not use Django `Group` as the tenant role:
 
 ## Tenant resolution and request lifecycle
 
+PR5 implemented the first tenant-resolution boundary in the Django/DRF API.
+Institution slug context is read only from
+`/api/v1/institutions/{institution_slug}/context/`; the existing Django session
+authentication remains the authentication mechanism. The resolver queries the
+current Institution and Membership for every request and exposes an immutable
+request-local `TenantContext` to the context view.
+
+At this boundary, `draft` and `active` institutions are eligible for ordinary
+tenant context access, while `suspended` and `closed` institutions are
+unavailable. Only active memberships grant access. Unknown or unavailable
+institutions return 404, while non-member and suspended or removed memberships
+return 403. This behavior implements tenant resolution only; role/action and
+object-level authorization remain future work.
+
 Use a canonical tenant-scoped URL such as
 `/api/v1/institutions/{institution_slug}/students/`. The authenticated user's
 membership list can populate a tenant picker, but a selected institution is
