@@ -16,14 +16,16 @@ session authentication endpoints, health/readiness endpoints, PostgreSQL test
 settings, and implemented Institution and Membership foundation models. It has
 no invitation models or business APIs. Tenant resolution now exists for the
 `GET /api/v1/institutions/{institution_slug}/context/` boundary, but tenant
-authorization and object-level isolation remain unimplemented. Invitation
-models, admin tenant workflows, background task systems, cache isolation,
-export pipelines, and tenant audit logs also remain absent. The executable
-model tests validate only institution/membership data integrity; they do not
-establish tenant isolation or authorization. Tenant-resolution API tests
-establish the implemented membership and institution eligibility boundary;
-broader tenant-isolation
-regression tests in this document remain planned.
+authorization remains partial: a reusable default-deny DRF permission now
+checks explicitly declared membership roles against the current active
+membership, but no production business view uses it yet. The context endpoint
+does not make role/action decisions. Object-level isolation remains
+unimplemented. Invitation models, admin tenant workflows, background task
+systems, cache isolation, export pipelines, and tenant audit logs also remain
+absent. Tenant-resolution API tests establish the institution and membership
+eligibility boundary; isolated authorization API tests establish permission
+behavior, while broader business-endpoint tenant-isolation regression tests in
+this document remain planned.
 
 The CI workflow runs the current backend suite with PostgreSQL 17 and
 explicitly selects `config.settings.test_postgres`; ordinary local pytest
