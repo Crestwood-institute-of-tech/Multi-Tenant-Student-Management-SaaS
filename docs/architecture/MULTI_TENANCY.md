@@ -1,11 +1,13 @@
 # Multi-Tenancy Architecture
 
-**Status:** Proposed; review required before migrations or tenant-scoped features
+**Status:** Proposed; review required before future tenant-owned domain features
 **Scope:** Initial shared-schema tenancy for the Django modular monolith
 
-The assumptions and unresolved identity, lifecycle, authentication,
-authorization, invitation, ownership, tenant-resolution, and platform-access
-choices below remain provisional. Review the
+The unresolved identity, lifecycle, authentication, authorization,
+invitation, ownership, tenant-resolution, and platform-access choices below
+remain provisional. The existing session, tenant-resolution, and generic
+role-permission code is implementation baseline, not approval of the remaining
+architecture proposals. Review the
 [tenant and authentication decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md)
 for the alternatives, trade-offs, proposed defaults, and required project-owner
 approvals. Neither this proposal nor a merged documentation PR constitutes
@@ -186,28 +188,28 @@ stored role. Client-supplied role, institution, and membership values are not
 authorization inputs. This is a function-level foundation only: it does not
 establish a role/action matrix, role hierarchy, or object-level permissions.
 
-Start with a small, institution-scoped role value on `InstitutionMembership`:
+The model currently stores one role on each `Membership`. These role summaries
+are proposals only; operation-specific defaults and conditions are in the
+[institution role/permission matrix](./INSTITUTION_ROLE_PERMISSION_MATRIX.md):
 
-| Role | Initial scope |
+| Existing role | Proposed boundary; not an approved grant |
 |---|---|
-| Owner | Full institution administration, including membership and settings; cannot grant platform privileges |
-| Administrator | Routine institution and staff administration, excluding owner transfer and platform operations |
-| Staff | Operational permissions explicitly granted to staff workflows |
-| Teacher | Assigned classes/courses and permitted teaching workflows |
-| Student | Own profile and explicitly permitted learning records |
-| Parent/guardian | Only linked students and explicitly permitted records for those students |
+| `institution_admin` | Institution administration only as individually authorized; not an owner or unrestricted student/finance-data role |
+| `academic_staff` | Academic workflows only within explicitly assigned scope |
+| `finance_staff` | Finance workflows only within approved finance scope and segregation controls |
+| `student` | Potential self-access only after a server-verified student relationship and per-domain rules |
+| `guardian` | Potential linked-learner access only after a verified relationship, consent, and per-domain policy exist; otherwise deny |
 
-The role is a starting policy, not blanket access to every object. Teacher
-access should be limited by teaching assignments; student access by a
-self-relationship; guardian access by a verified, revocable guardian-student
-link. Domain rules can narrow access further. Owner and administrator actions
-also need explicit checks for sensitive operations and separation of duties.
+No role implies a hierarchy, broad object access, or authority in another
+institution. There is no modelled owner, teacher, or platform-support role.
+Sensitive operations, including membership management, publication, finance
+approval, and audit access, require explicit policies and object-level controls.
 
 ### Django Groups and Permissions
 
 Use a combination, but do not use Django `Group` as the tenant role:
 
-- The role on `InstitutionMembership` represents the user's authority at one
+- The role on `Membership` represents the user's authority at one
   institution. `User.groups` and Django's model permissions are global to the
   user and cannot safely express different roles in two institutions.
 - Centralized, small policy functions should answer role/action checks with the
@@ -413,8 +415,9 @@ behavior before moving data or adopting PostgreSQL RLS.
    initial institution field.
 3. Confirm the proposed global user + separate invitation + institution
    membership lifecycle.
-4. Approve the six fixed membership roles and the rule that guardians only
-   access explicitly linked students.
+4. Review the five implemented membership roles and approve or amend the
+   operation-by-operation role/action matrix, including whether guardian
+   access to explicitly linked students will be supported.
 5. Decide authentication/session strategy, invite email verification, and
    account recovery before implementing membership acceptance.
 6. Agree on institution slug mutation/redirect policy, audit retention, and
