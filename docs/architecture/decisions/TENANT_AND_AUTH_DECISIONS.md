@@ -4,22 +4,26 @@
 implementation. No decision in this register is accepted.
 **Scope:** Initial shared-schema Django/DRF backend with a Next.js frontend.
 **Baseline:** The repository currently has a global UUID/email Django user,
-PostgreSQL configuration, session and CSRF middleware, and protected health and
-OpenAPI routes. It also has implemented Institution and Membership foundation
-models, but no invitation, tenant-resolution, or tenant authorization
-implementation. All decisions remain Proposed.
+PostgreSQL configuration, session authentication, protected health and OpenAPI
+routes, Institution and Membership models, path-based tenant resolution, and a
+reusable institution-role DRF permission. It has no invitation or tenant-owned
+business API implementation. All decisions remain Proposed or Deferred; none
+are Accepted.
 
 This register makes the unresolved contracts reviewable. The proposed
-multi-tenancy architecture and the 47-case isolation test strategy are
-supporting documents, not evidence that these policies have been approved.
+multi-tenancy architecture, institution role/permission matrix, and isolation
+test strategy are supporting documents, not evidence that policies have been
+approved.
 Approval should be recorded by the project owner against each decision ID; a
 future implementation must follow only decisions marked **Accepted**.
 
-The test references below point to existing planned cases in
-[`TENANT_ISOLATION_TEST_STRATEGY.md`](../TENANT_ISOLATION_TEST_STRATEGY.md).
-Those cases are not implemented. Where an authentication, institution
-provisioning, or retention behavior is not covered there, that gap is called
-out rather than assigning a nonexistent test ID.
+Test references below point to cases in
+[`TENANT_ISOLATION_TEST_STRATEGY.md`](../TENANT_ISOLATION_TEST_STRATEGY.md)
+and existing focused API/model tests where noted. The strategy includes both
+implemented baseline coverage and future planned cases; a reference alone does
+not imply a behavior is implemented or a policy is approved. Where
+authentication, institution provisioning, or retention behavior is not
+covered, the gap is called out rather than assigning a nonexistent test ID.
 
 ## Status summary
 
@@ -435,8 +439,8 @@ rules.
 
 ### AUTHZ-01 — Institution-scoped role vocabulary — Proposed
 
-**Problem.** Choose initial roles without confusing tenant roles with global
-Django permissions.
+**Problem.** Establish the institution-scoped role vocabulary without
+confusing tenant roles with global Django permissions.
 
 **Alternatives.**
 - **Fixed institution-scoped roles on membership.** Advantage: simple,
@@ -447,45 +451,31 @@ Django permissions.
   distinct tenant roles; a configurable system expands administration and
   testing surface before needs are known.
 
-**Security implications.** Initial role set: `owner`, `administrator`,
-`academic_staff`, `teacher`, `finance_staff`, `student`, `guardian`. Store the
-role on membership, never on `User`. Django `is_staff`/`is_superuser` do not
-grant institution authority. Default-deny all actions not explicitly listed.
+**Security implications.** Store the tenant role on Membership, never on
+`User`. Django `is_staff`/`is_superuser` do not grant institution authority.
+Default-deny all actions not explicitly authorized.
 **Operational implications.** Restrict role assignment to authorized
 membership actions; audit transitions. Keep institution roles distinct from
 platform operator access.
-**Recommended default.** A small fixed role vocabulary scoped to each
-membership; do not treat Django Groups as tenant roles.
-**Reasoning.** This is the least-complex model that supports different roles
-for one global account and can be evaluated against a clear action matrix.
-**Consequences.** Product owner must approve role names and actions before
-models, endpoints, or invitation forms are built.
-**Related tests.** `MA-07`, `MA-08`, `MA-09`, `MA-10`.
-
-#### Proposed initial role/action matrix
-
-`Yes` means a default role grant, not unrestricted access to every record.
-`Assigned`/`linked` requires an independently validated relationship.
-`Limited` means only the minimum fields needed for that workflow. `No` means
-no default grant. Every request still requires active institution membership,
-an allowed function, and object-level authorization.
-
-| Role | Institution settings and lifecycle | Member administration | Student identity | Academic records | Attendance and grades | Financial records | Self / linked learner data | Platform support access |
-|---|---|---|---|---|---|---|---|---|
-| Platform operator | No | No | No | No | No | No | No | Only explicit, time-bounded support grant |
-| Institution owner | Yes, except platform operations | Yes, including owner transfer safeguards | Limited oversight; not automatic case-level access | No default case access | No default case access | No default transaction access | Own account | No |
-| Institution administrator | Routine settings; cannot close or claim platform access | Staff/member administration; cannot grant platform role or bypass owner safeguards | Limited to administration workflow | No default case access | No default case access | No | Own account | No |
-| Academic staff | No | No | Yes, within academic assignment | Yes, institution workflow | Yes, within academic assignment | No | Own account | No |
-| Teacher | No | No | Assigned learners only | Assigned classes/courses only | Assigned classes; permitted grade/attendance actions | No | Own account | No |
-| Finance staff | No | No | Limited identity needed for finance workflow | No | No | Yes, finance-only scope | Own account | No |
-| Student | No | No | Own profile only | Own permitted/published records | Own permitted records | Own permitted statements only | Own account and records | No |
-| Guardian | No | No | Linked learner only, minimal fields | Only if explicitly permitted | Only if explicitly permitted | Only if explicitly permitted | Verified, revocable linked learner | No |
-
-Owner and administrator authority is intentionally not equivalent to routine
-access to sensitive student or finance records. A future requirement for
-combined duties must explicitly grant and test that access. Guardian access
-requires a verified, revocable guardian-to-student relationship; institutional
-membership alone is insufficient.
+**Implementation fact.** `Membership.Role` currently defines exactly
+`institution_admin`, `academic_staff`, `finance_staff`, `student`, and
+`guardian`. There is no `owner`, `administrator`, `teacher`, or platform
+operator membership role. These model choices are the implementation baseline,
+not an approved policy decision.
+**Recommended default.** Keep a small fixed vocabulary scoped to each
+membership; do not treat Django Groups as tenant roles. Review whether the
+existing vocabulary meets product needs before changing the model.
+**Reasoning.** These are the current choices and support different roles for a
+global identity at different institutions without making global groups tenant
+authority.
+**Consequences.** Do not add/change roles or infer grants from role names
+without explicit approval. Platform support, owner succession, and any
+additional role remain separate decisions.
+**Related tests.** Model choices are verified by
+`test_institution_membership_models.py`; tenant context and role authorization
+are covered by `test_tenant_resolution_api.py` and
+`test_institution_authorization_api.py`. These tests do not approve a
+business-action matrix.
 
 ### AUTHZ-02 — Role checks versus object-level policy — Proposed
 
@@ -509,17 +499,72 @@ to read. Default deny unknown actions.
 **Operational implications.** Centralize small, typed policy functions and
 reuse them from API views and services. Django model permissions may supplement
 global permissions but cannot replace membership policy.
-**Recommended default.** Fixed role/action matrix, reusable policy functions,
-tenant-scoped querysets, and explicit object relationship checks. Reassess
-custom fine-grained permissions only when product needs demonstrate stable
-requirements.
-**Reasoning.** This addresses the concrete role and relationship risks without
-introducing a policy language before there is a supported permission model.
-**Consequences.** Add a role/action table-driven test for every endpoint and
-positive and negative object tests; prohibit policy decisions based only on
-client-submitted IDs or role fields.
+**Implementation baseline.** Tenant resolution is implemented separately.
+`InstitutionRolePermission` requires the resolved request-local tenant context
+and re-queries the active membership for that user and institution on each
+request. A protected DRF view must directly declare a non-empty tuple or
+frozenset named `allowed_membership_roles`; missing, empty, or unknown role
+declarations fail closed. No production business endpoint currently uses this
+permission.
+**Recommended default.** Keep resolution and role authorization separate;
+compose `IsAuthenticated`, `InstitutionTenantPermission`, and
+`InstitutionRolePermission` on tenant-scoped views. Scope querysets and
+relationships independently. Reassess custom fine-grained permissions only
+when product requirements justify them.
+**Reasoning.** This provides a reusable default-deny function boundary without
+equating membership with unrestricted access or claiming object authorization.
+**Consequences.** The permission only enforces declared function-level role
+eligibility. It does not validate object ownership, assignment, student-self
+access, guardian links, or any role/action grant. Test both permission behavior
+and each eventual endpoint's object-level boundaries; never decide from
+client-supplied role or tenant values.
 **Related tests.** `MA-07`, `MA-08`, `DI-01`–`DI-08`, `RI-01`–`RI-07`,
 `CR-04`.
+
+### AUTHZ-03 — Institution role/action matrix — Proposed
+
+**Problem.** Decide which existing institution roles may perform which
+operations across institution, membership, admissions, student, academic,
+enrolment, attendance, assessment, results, finance, reporting, communication,
+and audit domains.
+
+**Alternatives.**
+- **Approve a documented operation-by-operation matrix before business APIs.**
+  Advantage: reviewable, default-deny grants and explicit sensitive boundaries.
+  Disadvantage: requires product decisions for workflows, relationships,
+  publishing, exports, and separation of duties before endpoints are built.
+- **Assign broad authority from role names or decide permissions ad hoc in
+  endpoint code.** Advantage: faster first endpoint. Disadvantage: inconsistent
+  grants, accidental privilege expansion, and weak reviewability.
+
+**Security implications.** Every request still requires authentication,
+resolved institution context, and current active membership. Roles are
+institution-specific; another institution's role cannot authorize the
+requested institution. Client-supplied role, tenant, membership, or object
+identifiers never grant permission. Sensitive records and exports require
+independent object, purpose, and field-level controls.
+**Operational implications.** Keep the matrix versioned with architecture
+decisions and map each production endpoint to explicit action rows and tests.
+Mark unavailable workflows deferred and deny them until required policies and
+controls exist.
+**Recommended default.** Review
+[`INSTITUTION_ROLE_PERMISSION_MATRIX.md`](../INSTITUTION_ROLE_PERMISSION_MATRIX.md)
+as a proposed starting point using only current Membership role choices.
+`ALLOW`, `DENY`, `CONDITIONAL`, and `DEFERRED` are policy vocabulary in that
+proposal; `CONDITIONAL` and `DEFERRED` do not grant access before their
+conditions and capabilities are implemented.
+**Reasoning.** A separate matrix makes sensitive permissions and unsupported
+assumptions visible without implementing or approving grants through code or
+documentation alone.
+**Consequences.** The matrix is not accepted. The project owner must review
+each conditional area, guardian/self relationships, owner/final-owner
+safeguards, publication, finance segregation, audit access, exports, and
+platform support before any production endpoint relies on it. No role
+hierarchy or new role is implied.
+**Related tests.** Future endpoint tests should map to reviewed matrix actions
+and include positive controls, denied roles, cross-institution attempts,
+membership/role changes, and object-scope checks. Existing permission tests
+verify the generic boundary only.
 
 ### INV-01 — Invitation issue and acceptance — Proposed
 
@@ -860,9 +905,10 @@ Implementation dependencies after approval:
   institution/email acceptable?
 - What session idle/absolute expiry, account-verification, and
   password-recovery requirements should apply?
-- Are the role names and proposed role/action boundaries appropriate, and
-  which institution actions can owner/administrator roles perform on sensitive
-  learner records?
+- Are the five implemented membership role names sufficient, which proposed
+  actions should `institution_admin` be allowed to perform on sensitive
+  learner records, and is a distinct owner role and succession workflow
+  required?
 - What is the approved closure, data-retention, audit-retention, and legal
   deletion policy?
 - Is per-device session revocation required for the initial release?
