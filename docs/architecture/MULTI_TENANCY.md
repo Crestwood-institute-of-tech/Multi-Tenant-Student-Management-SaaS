@@ -79,27 +79,42 @@ Proposed fields:
   by the portable database constraints.
 - `institution_type`: constrained value such as `school`, `college`,
   `university`, or `other`.
-- `status`: `onboarding`, `active`, `suspended`, or `closed`.
+- `status`: the implementation currently defines `draft`, `active`,
+  `suspended`, and `closed`. Older proposal text called pre-activation
+  `onboarding`; the current value is `draft`. Adding/renaming a value requires
+  a reviewed migration and data/API/test plan.
 - `timezone`: optional IANA timezone, defaulting to UTC, for institution-local
   schedules and date boundaries.
 - `created_at`, `updated_at`: timezone-aware timestamps.
 
 Avoid adding address, billing, branding, or academic-calendar fields until
 their owning features establish requirements. `suspended` blocks ordinary
-tenant access; `closed` is a terminal/archived state, not a hard delete. A
-platform support operation may restore a suspended institution under an
-auditable, separately authorized workflow.
+tenant access; `closed` is terminal for ordinary workflows and is not a hard
+delete. Exceptional reopening and platform recovery remain unapproved
+workflows. See the [institution ownership and lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+for a proposed transition table.
 
 ### User, membership, and invitation
 
-`User` remains the global authentication identity. `InstitutionMembership`
-joins a user to an institution and contains the tenant-scoped role, status
+`User` remains the global authentication identity. `Membership` joins a user
+to an institution and contains the tenant-scoped role, status
 (`active`, `suspended`, or `removed`), and lifecycle timestamps such as
 `accepted_at`, `suspended_at`, and `removed_at`. The separate invitation
 represents the pending/invited state before membership is active. Keep a
 membership row when access is removed so history and audit references remain
 intact. A unique institution/user pair prevents duplicate memberships;
 reinstatement is an explicit state transition.
+
+The project owner selected a dedicated `owner` membership role distinct from
+`institution_admin`. This is a future architecture direction, not a current
+`Membership.Role` value or implemented workflow. Proposed ownership semantics,
+initial assignment, final-owner protection, succession, lifecycle transitions,
+and required audits are documented in
+[Institution Ownership and Lifecycle](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
+The selected role does not imply owner inherits all administrator permissions,
+holds multiple roles on one membership, or receives broad student/finance data
+access. Existing institutions require explicit owner assignment in a reviewed
+migration; do not infer owners by promoting all institution administrators.
 
 Use a separate `InstitutionInvitation` because an invite may exist before the
 recipient has an account. It should contain institution, normalized email,
@@ -111,10 +126,27 @@ choose or elevate their own role. Pending invites should be unique per
 institution and normalized email, with expiry and revocation behavior defined.
 
 Membership removal and invitation revocation are distinct. Invitation
-acceptance, suspension, removal, role changes, and institution status changes
-should be auditable with actor, target, time, and outcome. Enforce transaction-
-safe rules so the last active owner cannot be removed, suspended, or demoted
-until another owner exists.
+acceptance, suspension, removal, role changes, ownership transitions, and
+institution status changes should be auditable with actor, target, time,
+reason, and outcome. The proposed invariant is at least one available active
+owner for each non-closed institution; it is not implemented. Enforce it with
+a shared PostgreSQL transaction protocol that locks relevant global User rows
+in deterministic UUID order, then affected Institution rows in deterministic
+UUID order, then re-reads current membership/account/institution state. Account
+deactivation must re-query owner memberships after acquiring the target User
+lock. If a post-lock reread shows the operation must authorize against or
+mutate a previously unknown User row, roll back and retry with the expanded
+sorted lock set; never acquire a User lock after an Institution lock. The user
+lock set covers operation participants/changed accounts; owner states are
+re-read after institution
+locks, and every write changing owner membership or account availability must
+serialize on the affected institution lock. This is a proposed protocol, not
+an implemented or universally enforced control. OWN-04 leaves open whether
+strict service write-path restrictions suffice or PostgreSQL-specific
+enforcement is also required. See the [ownership/lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+and [decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md). PostgreSQL
+concurrency tests are required; SQLite alone does not establish row-lock
+safety.
 
 ```mermaid
 erDiagram
@@ -199,11 +231,13 @@ are proposals only; operation-specific defaults and conditions are in the
 | `finance_staff` | Finance workflows only within approved finance scope and segregation controls |
 | `student` | Potential self-access only after a server-verified student relationship and per-domain rules |
 | `guardian` | Potential linked-learner access only after a verified relationship, consent, and per-domain policy exist; otherwise deny |
+| `owner` | Project-owner-selected future role, not currently implemented; ownership/governance powers and any shared admin actions require explicit approval |
 
 No role implies a hierarchy, broad object access, or authority in another
-institution. There is no modelled owner, teacher, or platform-support role.
-Sensitive operations, including membership management, publication, finance
-approval, and audit access, require explicit policies and object-level controls.
+institution. `owner` is selected as a future role but is not yet a model choice;
+there is no modelled teacher or platform-support membership role. Sensitive
+operations, including membership management, publication, finance approval,
+and audit access, require explicit policies and object-level controls.
 
 ### Django Groups and Permissions
 
