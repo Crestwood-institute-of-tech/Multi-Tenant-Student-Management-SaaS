@@ -179,35 +179,88 @@ authorization contract when executed.
 **Problem.** Decide who may create an institution and when it becomes usable.
 
 **Alternatives.**
-- **Self-service onboarding with a verified creator as initial owner.**
-  Advantage: low-friction setup. Disadvantage: abuse, duplicate institutions,
-  and fraudulent claims need controls.
-- **Platform-provisioned institutions only.** Advantage: controlled
-  provisioning and identity verification. Disadvantage: operational bottleneck
-  and support dependency.
+- **Immediate self-service create/activate.** Advantage: lowest friction.
+  Disadvantage: permits institution squatting, duplicate tenants, impersonation,
+  and fraudulent owner claims without effective verification and review.
+- **Self-service request, then verified and approved provisioning.**
+  Advantage: users can initiate the process while institution creation and
+  activation remain gated. Disadvantage: requires a request workflow,
+  verification evidence, review capacity, and audit controls.
+- **Platform-only request intake.** Advantage: consistent centralized
+  screening. Disadvantage: operational bottleneck and no self-service path.
+  An authorized provisioning service may submit on behalf of an institution
+  only if it uses the same evidence, approval, owner-acceptance, and audit
+  contract.
 
-**Security implications.** A new institution starts in `onboarding`; creation
-does not grant access to existing institutions or bypass verification.
-Activation requires a verified creator/owner and an explicit activation check.
-**Operational implications.** Rate limits, duplicate/slug handling, abuse
-response, and whether platform review is required must be set before launch.
-**Recommended default.** Permit a verified creator to create an `onboarding`
-institution and receive its initial owner membership; activate only after
-required owner and institution checks pass. Keep platform provisioning as an
-audited alternative if product governance requires approval.
-**Reasoning.** This preserves a usable onboarding path while separating
-creation from tenant access and activation.
-**Consequences.** Exact verification, eligibility, and review requirements
-remain project-owner decisions; do not expose business APIs to an onboarding
-tenant beyond the explicitly approved setup flow.
-**Related tests.** `TR-01`, `TR-05`, `MA-01`, `MA-08`. Add institution
-creation/activation cases before implementing provisioning; the existing
-strategy has no dedicated creation workflow case.
+**Implementation fact.** `Institution.Status` currently contains `draft`,
+`active`, `suspended`, and `closed`; it has no `onboarding` value. The default
+status is `draft`, and tenant resolution currently permits `draft` context for
+an active member.
+**Security implications.** A verified email proves control of an address, not
+that a person represents an institution. Verify institutional identity from an
+authoritative source and creator authority from a separately sourced official
+contact/authority record. A name, slug, domain, or client-supplied role is not
+proof. Protect verification evidence and owner-acceptance challenges; do not
+disclose whether a competing institution exists or automatically merge or
+reassign one. Activation requires a separate explicit decision and an
+available active owner under OWN-01.
+**Operational implications.** Rate limits, evidence exceptions, duplicate
+resolution, request/challenge expiry, retention, review capacity, and
+resubmission policy must be set before launch. The current backend has no
+email-verification state, provisioning workflow, platform approver capability,
+owner role, or audit store.
+**Recommended default.** Use the existing `draft` state for provisioned but
+not yet activated institutions; do not introduce `onboarding` without a
+separately reviewed migration. Require an authenticated active creator whose
+email control is verified and whose authority to represent the institution is
+independently evidenced. Keep a separate provisioning request (not a partially
+created Institution) with explicit request, verification, owner-acceptance,
+approval, rejection/expiry, and provisioning outcomes. A platform verifier
+establishes the institution's identity and the creator's authority; a
+separately authorized platform approver, distinct from the requester and
+proposed owner, explicitly approves or rejects provisioning. Require an
+eligible active account selected as initial owner to explicitly accept the
+institution-specific `owner` role before approval; if creator and owner are
+the same person, require a distinct affirmative acceptance action. A second
+approver reviews exceptions and conflicting claims. After all gates pass,
+create the Institution as `draft` and its initial active owner Membership in
+one transaction with the success audit events. Provisioning approval does not
+activate it: after setup, the owner requests activation and a separate
+platform approver authorizes it. Preserve current `draft` tenant-context
+resolution but expose no ordinary business APIs before activation.
+**Reasoning.** This preserves the current status contract and separates
+provisioning from tenant activation.
+**Consequences.** This is a recommended workflow, not an accepted
+self-service policy or implemented capability. Idempotent request retries
+must return the same request; duplicate or competing claims pause for
+independent review, while slug conflicts require a reviewed alternate slug.
+Expired/rejected requests create no tenant; failed provisioning rolls back
+both Institution and owner Membership. Abandoned challenges expire and are
+revoked; after provisioning, abandonment follows ordinary lifecycle and
+succession rules rather than deletion. Record request, verifier, approver,
+owner acceptance, provisioning, failure, and activation as distinct outcomes;
+the successful Institution/Membership creation and its success audit are
+atomic. The project owner must still decide acceptable evidence for
+unregistered/informal institutions, verified-email implementation, request
+and challenge lifetimes, evidence retention, exception thresholds, review
+staffing/separation of verifier and approver, and whether every activation
+requires platform approval. The selected owner representation is recorded
+under OWN-03; it is not implemented. Do not expose ordinary business APIs to
+a `draft` institution.
+**Related tests.** `TR-01`, `TR-05`, `MA-01`, `MA-08`. Add focused
+provisioning-request, evidence/authority, owner-acceptance, independent
+approval, duplicate/conflict, expiry/idempotency, atomic-create/audit-failure,
+and activation cases before implementation; existing tests do not cover this
+workflow.
 
 ### INS-02 — Suspension, archival, and deletion — Proposed
 
 **Problem.** Define institution lifecycle and access behavior when an
 institution is suspended or closed.
+
+**Implementation fact.** The model and database constraint accept exactly
+`draft`, `active`, `suspended`, and `closed`. The tenant resolver admits
+`draft` and `active`, and returns 404 for `suspended` and `closed`.
 
 **Alternatives.**
 - **Onboarding → active → suspended → active, or closed.** Advantage:
@@ -223,14 +276,28 @@ not available to ordinary users. Neither state can be bypassed by a valid
 membership or stale credential.
 **Operational implications.** Retention, export, backup, billing, legal hold,
 and exceptional recovery procedures must be coordinated before closure.
-**Recommended default.** Use `onboarding`, `active`, `suspended`, and `closed`;
-do not hard-delete institution records through product APIs. Treat closure as
-terminal for ordinary workflows; exceptional reopening requires a separately
-authorized, audited operation.
+**Recommended default.** Preserve the four implemented values. Treat
+`draft` as pre-activation (the semantics some older proposal text called
+“onboarding”), do not hard-delete institution records through product APIs,
+and deny ordinary tenant access to suspended/closed institutions. Apply the
+transition actors and approvals in
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+as the recommended workflow: only an active owner may request routine
+activation, reinstatement, or closure; an independently authorized platform
+approver executes/approves those transitions. Platform security/compliance
+may initiate emergency suspension, with independent review. Closure is
+terminal for ordinary workflows. Exceptional reopening is a separately
+approved platform recovery into `suspended`, never directly to `active`, and
+must atomically restore/assign an available active owner if needed.
 **Reasoning.** An explicit lifecycle is safer to operate and preserves stable
 references while avoiding an unreviewed purge policy.
-**Consequences.** Define institution-wide suspension/closure effects on jobs,
-exports, sessions, and data retention before production use.
+**Consequences.** These actors and transitions are recommendations, not
+implemented permissions or an accepted platform governance policy. The
+project owner must still decide who holds the platform approver authority,
+the identity/evidence standard, emergency review deadline, and legal,
+billing, retention, export, and closure obligations. A new status value would
+require a model and database-constraint migration plus data/API/test updates;
+no such change is approved here.
 **Related tests.** `TR-05`, `MA-02`, `MA-03`, `OP-02`, `OP-04`.
 
 ### INS-03 — Stable institution ID and slug changes — Proposed
@@ -460,17 +527,23 @@ platform operator access.
 **Implementation fact.** `Membership.Role` currently defines exactly
 `institution_admin`, `academic_staff`, `finance_staff`, `student`, and
 `guardian`. There is no `owner`, `administrator`, `teacher`, or platform
-operator membership role. These model choices are the implementation baseline,
-not an approved policy decision.
+operator membership role in code.
+**Project-owner-selected direction.** Represent institution ownership with a
+dedicated `owner` Membership role distinct from `institution_admin`. This
+direction is selected, but no role choice, migration, ownership workflow, or
+owner permission has been implemented. Its invariant and detailed semantics
+remain Proposed under OWN-01 through OWN-03.
 **Recommended default.** Keep a small fixed vocabulary scoped to each
-membership; do not treat Django Groups as tenant roles. Review whether the
-existing vocabulary meets product needs before changing the model.
+membership; do not treat Django Groups as tenant roles. Add the selected owner
+role only through a reviewed model/database migration and do not infer its
+permissions from its name.
 **Reasoning.** These are the current choices and support different roles for a
 global identity at different institutions without making global groups tenant
 authority.
-**Consequences.** Do not add/change roles or infer grants from role names
-without explicit approval. Platform support, owner succession, and any
-additional role remain separate decisions.
+**Consequences.** The owner-role representation is the sole selected
+architectural direction; role grants, assignment, succession, platform
+support, and any other role remain separate decisions. The selected role is
+not yet part of the current role choices.
 **Related tests.** Model choices are verified by
 `test_institution_membership_models.py`; tenant context and role authorization
 are covered by `test_tenant_resolution_api.py` and
@@ -630,8 +703,8 @@ matrix covers expiry and pending access, not enumeration.
 
 ### OWN-01 — Minimum active owners — Proposed
 
-**Problem.** Avoid an institution losing its final owner through removal,
-suspension, demotion, or account disablement.
+**Problem.** Avoid a non-closed institution losing its final available owner
+through removal, suspension, demotion, or account disablement.
 
 **Alternatives.**
 - **Require at least one active owner at all times.** Advantage: preserves
@@ -641,20 +714,40 @@ suspension, demotion, or account disablement.
   membership changes. Disadvantage: orphaned institution and routine dependence
   on privileged support.
 
-**Security implications.** Do not permit a user to remove/demote/suspend the
-last active owner or disable that account while leaving no owner. The rule does
-not grant an owner platform privileges.
+**Security implications.** Under the recommended target invariant, an
+available owner is exactly a Membership for the institution with
+`role = owner`, `status = active`, and an associated global User with
+`is_active = true`. After migration/backfill and before owner workflows are
+enabled, each `draft`, `active`, or `suspended` institution must have at least
+one such membership at each committed database state. The rule does not grant
+platform privileges and is not currently enforced.
 **Operational implications.** A separately authorized recovery process is
 required if the only owner is unreachable or compromised; that process must be
 audited.
-**Recommended default.** Require at least one active owner for every active
-institution; activation requires the initial owner.
+**Recommended default.** Require at least one available active owner for every
+non-closed institution (`draft`, `active`, or `suspended`); create the initial
+owner atomically with the institution. The owner must be available immediately
+before a close request is approved and is recorded in its audit event; after
+closure, the invariant no longer applies and ordinary owner/account cleanup
+may proceed under the retention policy. Deactivating a global account is
+allowed only when every affected non-closed institution will still have an
+available active owner after the account becomes inactive; otherwise reject
+the entire account-deactivation transaction without changing the account or
+any membership. Check all affected institutions, not a caller-supplied subset.
+Do not automatically promote another member. A later `closed` → `suspended`
+reopening must commit only with an available owner; if none exists, restore or
+assign an eligible, accepting owner and reopen atomically, or leave the
+institution closed.
 **Reasoning.** Ownership is the minimum administrative safety invariant, not
 an implied role privilege over all tenant data.
-**Consequences.** Define what happens when an owner account is globally
-disabled and who may recover the institution before enabling account
-deactivation.
-**Related tests.** `MA-08`, `CR-05`.
+**Consequences.** One available owner is the invariant; a second owner is
+recommended for succession but is not a requirement. Account reactivation
+does not change membership state; an unchanged active owner membership counts
+again once its user's account is active. Define and approve the evidence,
+eligibility, and independent approval for recovery before enabling these
+workflows. This remains a recommendation pending project-owner approval.
+**Related tests.** `MA-08`, `CR-05`, plus the proposed PostgreSQL concurrency
+cases in [`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
 
 ### OWN-02 — Concurrent ownership changes and audit — Proposed
 
@@ -670,22 +763,172 @@ minimum-owner rule and provide trustworthy records of sensitive actions.
   pre-check.** Advantage: simpler. Disadvantage: concurrent requests can both
   pass and leave zero owners.
 
-**Security implications.** In one transaction, lock the institution (or another
-stable coordination row), reload current active owners, validate the change,
-persist it, and write an immutable audit event. Derive actor, institution,
-target, time, action, and outcome on the server. Never log credentials or
-sensitive student payloads.
+**Security implications.** In one PostgreSQL transaction, lock the operation's
+actor and target User rows in deterministic UUID order, then affected
+Institution rows in deterministic UUID order, then re-read membership,
+account, and institution state before validating the invariant. Global account
+deactivation must lock the target User first, then re-query every institution
+in which that user is an owner before locking those institutions. Persist the
+authorized change and its audit event atomically. Record initiator and
+approver separately; derive attribution, institution, target, time, action,
+and outcome on the server. Never log credentials or sensitive student
+payloads.
 **Operational implications.** Exercise lock behavior and rollback on
 PostgreSQL; define audit retention, access, integrity, and alerting before
 production use.
-**Recommended default.** Transactional serialization for owner-affecting
-changes, with append-only audit events and explicit failure/rollback semantics.
+**Recommended default.** Use the shared User-then-Institution
+`select_for_update()` protocol described in
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+for every application owner-affecting write. If a post-lock reread discovers
+an additional User row the operation must authorize against or mutate, roll
+back and restart with the complete sorted User-lock set; never acquire a User
+lock while holding Institution locks. Re-read all owner accounts and
+memberships under the Institution lock. Commit the state change and successful
+audit insert in the same transaction; an audit insert failure aborts the
+change. Failed attempts, if retained, are recorded separately as failed
+attempts and never as successful events. Protect audit rows from ordinary
+application update/delete with database privileges and an immutable-write
+guard; restrict table ownership and privileged maintenance access. This
+application protocol does not by itself protect writes that bypass it.
 **Reasoning.** A normal count check or row-level membership lock alone may not
 serialize competing changes to different memberships; a shared institution
 lock makes the invariant explicit.
-**Consequences.** Define consistent lock ordering for future bulk operations.
-The audit store and retention policy remain separate implementation decisions.
-**Related tests.** `CR-03`, `CR-05`, `OP-08`.
+**Consequences.** Every owner assignment, transfer, relinquishment, recovery,
+membership/account availability change, and relevant lifecycle transition
+must use the same lock order and authorized service path. Django admin actions,
+bulk operations, management commands, background jobs, and platform tools
+must call that service rather than write around it. Define bounded
+whole-transaction retry/conflict behavior and test it against PostgreSQL;
+SQLite cannot prove row-locking behavior. OWN-04 recommends a database
+invariant guard in addition to this protocol. Audit retention, reader access,
+and tamper-evidence policy remain separate decisions.
+**Related tests.** `CR-03`, `CR-05`, `OP-08`, plus the proposed PostgreSQL
+concurrency cases in
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
+
+### OWN-03 — Dedicated owner membership role — Proposed
+
+**Problem.** Represent institutional ownership distinctly from routine
+institution administration.
+
+**Project-owner-selected architectural direction.** Use a dedicated `owner`
+role on an institution Membership, separate from `institution_admin`. This
+direction was selected for architecture on 2026-11-20. The decision remains
+listed Proposed because role powers, assignment, invariant, lifecycle, and
+recovery details are not fully approved; the role is not implemented.
+
+**Alternatives.**
+- **Dedicated membership role `owner`.** Advantage: ownership is scoped to one
+  institution, visible in the membership record, and distinct from routine
+  administrator authority. Disadvantage: requires a role-constraint migration,
+  initial-owner backfill/assignment, and explicit transfer/succession rules.
+- **Treat `institution_admin` as owner.** Advantage: no additional role value.
+  Disadvantage: conflates institution administration with ownership and makes
+  owner succession/final-owner invariants ambiguous.
+- **Store a separate owner foreign key on Institution.** Advantage: explicit
+  owner reference. Disadvantage: duplicates membership identity, makes
+  multiple owners and consistency with membership status harder, and conflicts
+  with the selected membership-role direction.
+
+**Security implications.** Owner is not `is_staff`, `is_superuser`, a platform
+role, or blanket access to student/finance data. Do not allow client-selected
+owner assignment or administrator self-elevation. Revalidate current active
+owner membership on every ownership decision.
+**Operational implications.** Existing Membership has one role field and a
+unique `(institution, user)` pair. Recommend one role per membership; an owner
+may exercise only individually approved administrative actions whose views
+explicitly include `owner`. Multiple people can be owners through separate
+memberships. An incoming owner should accept the assignment.
+**Recommended default.** Keep the selected dedicated role distinct from
+`institution_admin` and implement it only through a reviewed migration.
+Retain one role per membership; support multiple separate owner memberships.
+Create the initial owner atomically, require explicit acceptance for a
+different initial owner or incoming successor, and preserve the OWN-01
+invariant for every non-closed institution. An owner receives no inherited
+`institution_admin` grants; a future operation must explicitly permit both
+roles. Transfer, relinquishment, and recovery use the OWN-02 protocol.
+**Reasoning.** The representation keeps ownership institution-scoped, supports
+multiple owners without duplicate memberships, and allows explicit separation
+between governance and operational role grants.
+**Consequences.** Before migration, enumerate every existing institution and
+choose its owner explicitly; do not infer ownership by promoting any or all
+`institution_admin` members. Add the owner role only after the owner assignment
+and recovery process is approved. Add PostgreSQL concurrency tests,
+append-only audit events, bootstrap/transfer/account-deactivation recovery
+workflows, and update the permission matrix before production authorization.
+The current schema has no owner value, audit store, or enforcement. The
+project-owner-selected representation is not permission approval.
+**Related documentation.**
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+and [`INSTITUTION_ROLE_PERMISSION_MATRIX.md`](../INSTITUTION_ROLE_PERMISSION_MATRIX.md).
+
+### OWN-04 — Final-owner enforcement boundary — Proposed
+
+**Problem.** Determine what prevents supported and alternate database write
+paths from violating the proposed available-owner invariant.
+
+**Alternatives.**
+- **Strict service-level transactional protocol only.** Require every
+  application owner-affecting path to acquire relevant User rows and then
+  Institution rows in deterministic UUID order, validate current state, and
+  commit changes/audit atomically. Restrict and inventory all other writers.
+  This enforces the invariant only for paths that actually use the protocol.
+- **PostgreSQL-specific invariant guard only.** A database mechanism can
+  reject a committed state with no available owner for covered writes, but it
+  cannot authorize the actor or by itself provide trustworthy initiator and
+  approver attribution. Triggers can be disabled or bypassed by sufficiently
+  privileged database roles.
+- **Hybrid service protocol plus PostgreSQL guard.** The service remains the
+  required authorization, locking, and audit boundary; a deferred
+  PostgreSQL-specific guard independently checks the committed invariant for
+  covered table writes.
+
+**Security implications.** Service locks alone do not protect direct SQL,
+bulk updates, alternate services, admin operations, management commands, or
+jobs that bypass the protocol. A database guard can cover ordinary INSERT,
+UPDATE, and DELETE statements on Membership, `User.is_active` changes, and
+Institution creation/status changes only if it checks the end-of-transaction
+state for every affected non-closed institution and serializes concurrent
+checks. It does not enforce role authorization or complete actor/approver
+audit. Superusers, table owners, disabled triggers, replication/restore paths,
+or other privileged bypasses remain outside that guarantee and must be
+restricted or handled through controlled, audited maintenance. Trigger
+timing, multi-row ordering, account-status changes, audit atomicity, and
+compatible lock acquisition require PostgreSQL proof; a database guard must
+not be described as safe until those cases pass.
+**Operational implications.** PostgreSQL-specific mechanisms increase schema,
+migration, test, and operational complexity. Any chosen boundary requires a
+complete write-path inventory and real PostgreSQL concurrency tests.
+**Recommended default.** Require both layers: (1) every authorized
+application change goes through a service using the OWN-02 transaction and
+audit protocol; and (2) add a PostgreSQL-specific deferred invariant guard
+covering Membership inserts/updates/deletes, global account active-state
+changes, and Institution creation/status changes. The guard checks the
+end-of-transaction invariant under a per-Institution serialization lock, so
+initial creation and transfers may pass through valid intermediate states
+within one transaction. Explicitly prohibit ordinary DML paths around the
+service for authorization and audit; restrict database roles and privileged
+maintenance. If PostgreSQL concurrency tests cannot prove the guard's
+coverage and lock behavior, do not enable owner workflows until an equivalent
+database-enforced design is reviewed. This is a recommended target, not a
+claim that the mechanism exists or already guarantees safety.
+**Reasoning.** The current repository has no ownership workflow, audit store,
+or database mechanism that establishes this invariant. Service-only checks
+are bypassable by known alternate write paths; a database guard adds a
+separate final-state defense without replacing application authorization.
+**Consequences.** Before implementation, prove PostgreSQL behavior for
+concurrent owner changes, account deactivation across multiple institutions,
+institution creation/closure/reopening, bulk statements, and audit rollback.
+Inventory and restrict all database writers, define the audited break-glass
+path, and test that ordinary roles cannot disable or bypass the guard.
+Supported alternate paths that bypass the service cannot rely on service
+authorization or audit attribution; they must be prohibited or provide an
+equivalent trusted service/audit context. OWN-04 remains Proposed until
+project-owner approval and this validation; do not claim universal
+enforcement before every permitted writer is covered.
+**Related documentation.**
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+and [`TENANT_ISOLATION_TEST_STRATEGY.md`](../TENANT_ISOLATION_TEST_STRATEGY.md).
 
 ### PLAT-01 — Platform operator and support access — Proposed
 
@@ -837,8 +1080,11 @@ they become implementation acceptance criteria.
    current status where the job's contract requires authorization.
 7. Browser credentials are not readable bearer tokens; cookie-authenticated
    writes require CSRF defenses, and secrets/tokens never enter logs.
-8. Preserve at least one active owner for each active institution, with
-   transaction-safe serialization and auditable sensitive changes.
+8. The recommended invariant is at least one available active owner for every
+   non-closed institution, with service serialization and a PostgreSQL
+   final-state guard recommended under OWN-01/02/04. These remain Proposed and
+   are not implemented or currently guaranteed; see
+   [`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
 9. Platform support access is not standing cross-tenant authority; grants are
    scoped, time-bounded, purpose-bound, and audited.
 10. Every security-sensitive path has positive and negative regression tests;
@@ -888,7 +1134,9 @@ Implementation dependencies after approval:
    cases before login or invitation acceptance.
 2. Implement institution, membership, invitation, and audit schemas only after
    identity, lifecycle, owner, invitation, and retention contracts are
-   approved.
+   approved. The selected owner-role representation requires a migration and
+   explicit owner assignment for existing institutions; do not infer owners
+   from `institution_admin`.
 3. Implement tenant resolution and authorization only after the role/action
    matrix and response concealment contract are approved; run tenant and
    concurrency tests against PostgreSQL CI.
@@ -905,10 +1153,20 @@ Implementation dependencies after approval:
   institution/email acceptable?
 - What session idle/absolute expiry, account-verification, and
   password-recovery requirements should apply?
-- Are the five implemented membership role names sufficient, which proposed
-  actions should `institution_admin` be allowed to perform on sensitive
-  learner records, and is a distinct owner role and succession workflow
-  required?
+- Do the recommended OWN-01 to OWN-04 safeguards and INS-01/02 lifecycle
+  actors, approvals, and closed-institution recovery workflow meet product
+  requirements, or should any recommendation be amended?
+- How should each existing institution be assigned an initial owner during a
+  future migration? Which creator/owner verification requirements apply?
+- Are the five implemented non-owner role names sufficient, and which specific
+  routine administration operations should be shared with `owner` versus
+  `institution_admin`?
+- Which platform governance roles may approve/execute the recommended
+  workflows, and what emergency-review deadline and evidence standard apply?
+- Which database writers are permitted; can the recommended PostgreSQL
+  deferred guard cover them, and what controlled bypass/restore procedure is
+  required? What audit reader, retention, and external tamper-evidence policy
+  applies?
 - What is the approved closure, data-retention, audit-retention, and legal
   deletion policy?
 - Is per-device session revocation required for the initial release?

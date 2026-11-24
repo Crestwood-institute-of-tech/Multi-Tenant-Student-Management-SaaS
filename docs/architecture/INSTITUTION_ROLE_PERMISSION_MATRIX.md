@@ -15,6 +15,13 @@ The implemented `Membership.Role` choices are:
 - `student`
 - `guardian`
 
+The project owner has selected a dedicated `owner` Membership role, distinct
+from `institution_admin`, as the ownership representation for a future
+implementation. `owner` is not yet a model choice or permission. The operation
+tables below cover the five implemented roles; the proposed owner-specific
+overlay below documents the additional ownership boundary without pretending
+the role or its grants exist.
+
 Only active memberships pass tenant resolution. The implemented
 `InstitutionRolePermission` can enforce a view's explicit, non-empty
 `allowed_membership_roles` declaration against the current membership for the
@@ -24,8 +31,9 @@ context; it does not apply role/action restrictions.
 
 The role names and model choices are implementation facts, not evidence that
 their grants have been approved. The matrix below is a proposed starting point,
-not an accepted action matrix. It introduces no role, hierarchy, permission
-grant, API, or capability.
+not an accepted action matrix. The selected owner-role representation is
+documented as a future direction, not an implemented role or approved
+permission grant. No role hierarchy, API, or capability is introduced here.
 
 ## Matrix semantics
 
@@ -46,6 +54,37 @@ create, update, delete, approval, publication, or export authority.
 Codes in cells refer to the mandatory conditions below. A conditional cell is
 denied unless all its listed conditions are implemented. An unlisted operation
 has no implicit grant.
+
+## Proposed owner-role overlay
+
+The following is supplemental to the five-role operation tables, not a sixth
+implemented role or a blanket addition to every matrix cell. The selected
+representation is dedicated `owner`, not `institution_admin` with a different
+label. One membership continues to hold one role; owners do not also hold
+`institution_admin` simultaneously. If an operation is to be shared, a future
+view must explicitly list both roles after policy approval.
+
+| Operation area | Proposed `owner` treatment |
+|---|---|
+| Initial owner assignment, adding owners, transfer, relinquishment | CONDITIONAL (C29) |
+| Routine institution settings and narrowly scoped institution administration | CONDITIONAL (C30) |
+| Membership administration and owner-role changes | CONDITIONAL (C31) |
+| Admissions and individual student records | DENY by owner role alone |
+| Academic, enrolment, attendance, assessment, and results operations | DENY by owner role alone; separate explicit matrix grant and object-level scope required |
+| Institutional ledger, transactions, approvals, and student fees | DENY by owner role alone |
+| Reports and exports containing tenant/member/student/financial data | DENY by owner role alone; export is separately authorized |
+| Audit-log reads or exports | DEFERRED pending an approved auditor/access policy |
+| Platform support or cross-institution access | DENY |
+| Institution activation, suspension, closure, and reopening | CONDITIONAL (C32) |
+
+These are recommended defaults, not accepted owner permissions. Owner status
+does not imply `is_staff`, `is_superuser`, platform authority, or unrestricted
+access to sensitive records. Ownership transitions and institution lifecycle
+changes must follow the recommended shared User-then-Institution PostgreSQL
+lock protocol and atomic audit rules. OWN-04 recommends a PostgreSQL deferred
+invariant guard in addition to the service; neither layer exists today, and
+neither claims universal enforcement before approval, writer inventory, and
+PostgreSQL validation.
 
 ## Proposed matrix
 
@@ -223,7 +262,8 @@ has no implicit grant.
   not currently exist.
 - **C9 — Privilege/owner safeguards:** prohibit self-elevation and role grants
   beyond the actor's approved authority. There is no `owner` role in the model;
-  final-owner invariant, succession, and transfer authority are unresolved.
+  apply the recommended OWN-01 invariant, succession, and transfer safeguards
+  only after explicit approval and implementation.
 - **C10 — Export controls:** treat export as a separate permission; scope and
   minimize fields/rows, authorize the requested format and audience, apply
   retention/download controls, audit requester and purpose, and prevent
@@ -290,6 +330,30 @@ has no implicit grant.
   institution-scoped auditor function (not currently modeled); log audit-log
   reads/exports, redact secrets and sensitive payloads, and keep audit records
   append-only.
+- **C29 — Ownership transition:** require an existing authorized owner or
+  separately approved recovery path, eligible target, target acceptance,
+  OWN-01 available-owner invariant, shared User-then-Institution transaction
+  protocol, and append-only audit. Initial bootstrap requires a verified and
+  approved provisioning request plus explicit owner acceptance before the
+  Institution and Membership are atomically created; do not automatically
+  assign the requester as owner or infer ownership from an existing
+  `institution_admin`. No client-selected role or unaudited self-elevation.
+- **C30 — Owner administration:** permit only the specific routine settings
+  and administration operations explicitly approved for owners. `owner` does
+  not inherit all `institution_admin` grants; the operation's permission must
+  list owner explicitly.
+- **C31 — Owner membership authority:** require the approved owner/member
+  governance policy, prevent self-elevation, preserve the OWN-01 final-owner
+  invariant (including global account deactivation across all institutions),
+  require explicit target acceptance for owner assignment, and audit
+  initiator, approver, target, reason, and outcome. This does not create an
+  invitation or membership-management workflow.
+- **C32 — Owner lifecycle authority:** require the approved lifecycle
+  transition table, independent approval where specified, required
+  verification/remediation, final-owner protection (including atomic owner
+  restoration/assignment with an independently approved `closed` → `suspended`
+  recovery), the shared lock protocol, and an append-only audit record. No
+  lifecycle endpoint currently exists.
 
 ## Cross-cutting boundaries and unresolved questions
 
@@ -313,9 +377,10 @@ has no implicit grant.
    access. Students and guardians need separately defined statement and
    payment visibility, responsibility, and disclosure rules.
 6. **Membership administration:** the existing `institution_admin` role is
-   not equivalent to an owner. Approve who may invite, change roles, suspend,
-   remove, or reinstate members, and forbid self-elevation. The current schema
-   does not model an owner or final-owner protection.
+   not equivalent to the selected future `owner` role. Approve who may invite,
+   change roles, suspend, remove, or reinstate members, and forbid
+   self-elevation. The current schema does not yet model an owner or
+   final-owner protection.
 7. **Audit logs:** audit read/export is sensitive and should be a separately
    authorized, audited capability. The repository has no audit model or
    auditor role. The matrix denies direct role-based writes and changes to
@@ -341,7 +406,8 @@ must review and explicitly decide:
 
 - Which conditional grants and conditions are acceptable for each operation.
 - Whether student/guardian relationships and any consent/age rules will exist.
-- Whether an owner role and final-owner transfer safeguards are required.
+- Whether the selected dedicated `owner` role's proposed powers and
+  final-owner transfer safeguards are acceptable.
 - Who may make, review, and publish academic, attendance, assessment, results,
   and finance changes; including segregation-of-duties thresholds.
 - Which student data categories require additional restrictions and retention.

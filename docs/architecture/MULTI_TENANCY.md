@@ -79,27 +79,48 @@ Proposed fields:
   by the portable database constraints.
 - `institution_type`: constrained value such as `school`, `college`,
   `university`, or `other`.
-- `status`: `onboarding`, `active`, `suspended`, or `closed`.
+- `status`: the implementation currently defines `draft`, `active`,
+  `suspended`, and `closed`. Older proposal text called pre-activation
+  `onboarding`; the current value is `draft`. Adding/renaming a value requires
+  a reviewed migration and data/API/test plan.
 - `timezone`: optional IANA timezone, defaulting to UTC, for institution-local
   schedules and date boundaries.
 - `created_at`, `updated_at`: timezone-aware timestamps.
 
 Avoid adding address, billing, branding, or academic-calendar fields until
 their owning features establish requirements. `suspended` blocks ordinary
-tenant access; `closed` is a terminal/archived state, not a hard delete. A
-platform support operation may restore a suspended institution under an
-auditable, separately authorized workflow.
+tenant access; `closed` is terminal for ordinary workflows and is not a hard
+delete. Exceptional reopening and platform recovery remain unapproved
+workflows. See the [institution ownership and lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+for a proposed transition table.
 
 ### User, membership, and invitation
 
-`User` remains the global authentication identity. `InstitutionMembership`
-joins a user to an institution and contains the tenant-scoped role, status
+`User` remains the global authentication identity. `Membership` joins a user
+to an institution and contains the tenant-scoped role, status
 (`active`, `suspended`, or `removed`), and lifecycle timestamps such as
 `accepted_at`, `suspended_at`, and `removed_at`. The separate invitation
 represents the pending/invited state before membership is active. Keep a
 membership row when access is removed so history and audit references remain
 intact. A unique institution/user pair prevents duplicate memberships;
 reinstatement is an explicit state transition.
+
+The project owner selected a dedicated `owner` membership role distinct from
+`institution_admin`. This is a future architecture direction, not a current
+`Membership.Role` value or implemented workflow. Recommended ownership semantics,
+initial assignment, final-owner protection, succession, lifecycle transitions,
+and required audits are documented in
+[Institution Ownership and Lifecycle](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
+The recommended provisioning path uses a separate request: verify creator
+identity/authority and institution identity, obtain initial-owner acceptance,
+then require independent platform approval before atomically creating a
+`draft` Institution and its active owner Membership. Activation is a later,
+separately approved transition. No such request, verifier, approver, verified
+email state, or owner-acceptance capability currently exists.
+The selected role does not imply owner inherits all administrator permissions,
+holds multiple roles on one membership, or receives broad student/finance data
+access. Existing institutions require explicit owner assignment in a reviewed
+migration; do not infer owners by promoting all institution administrators.
 
 Use a separate `InstitutionInvitation` because an invite may exist before the
 recipient has an account. It should contain institution, normalized email,
@@ -111,10 +132,35 @@ choose or elevate their own role. Pending invites should be unique per
 institution and normalized email, with expiry and revocation behavior defined.
 
 Membership removal and invitation revocation are distinct. Invitation
-acceptance, suspension, removal, role changes, and institution status changes
-should be auditable with actor, target, time, and outcome. Enforce transaction-
-safe rules so the last active owner cannot be removed, suspended, or demoted
-until another owner exists.
+acceptance, suspension, removal, role changes, ownership transitions, and
+institution status changes should be auditable with actor, target, time,
+reason, and outcome. OWN-01 defines the recommended invariant: every `draft`,
+`active`, or `suspended` institution has at least one Membership with
+`role=owner`, `status=active`, and an associated `User.is_active=true`; closed
+institutions are exempt. It is not implemented. The recommended application
+protocol uses one PostgreSQL transaction, locks relevant User rows in
+deterministic UUID order, then affected Institution rows in deterministic UUID
+order, then re-reads current membership/account/institution state. Global
+account deactivation locks the target User first and re-queries every owned
+institution before locking institutions. If a post-lock reread discovers an
+additional User row needed for authorization or mutation, roll back and
+restart with the complete sorted lock set; never acquire a User lock after an
+Institution lock. Every owner membership, account-availability, and lifecycle
+write must use the same Institution lock protocol.
+
+OWN-04 recommends this service protocol for authorization and atomic audit
+plus a PostgreSQL-specific deferred final-state guard for covered writes. A
+service-only check can be bypassed by direct SQL, bulk updates, admin actions,
+commands, jobs, or alternate services. A database guard may catch ordinary
+covered DML but cannot authorize actors or supply trusted audit attribution;
+privileged database owners, disabled triggers, and untested maintenance paths
+can bypass it. Neither the protocol nor the guard exists in the application,
+and no concurrency guarantee is claimed. Both require project-owner approval,
+complete writer inventory, and PostgreSQL concurrency validation. See
+the [ownership/lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+and [decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md). Preserve
+the existing session authentication and tenant-resolution behavior; this
+proposal does not change it.
 
 ```mermaid
 erDiagram
@@ -199,11 +245,13 @@ are proposals only; operation-specific defaults and conditions are in the
 | `finance_staff` | Finance workflows only within approved finance scope and segregation controls |
 | `student` | Potential self-access only after a server-verified student relationship and per-domain rules |
 | `guardian` | Potential linked-learner access only after a verified relationship, consent, and per-domain policy exist; otherwise deny |
+| `owner` | Project-owner-selected future role, not currently implemented; ownership/governance powers and any shared admin actions require explicit approval |
 
 No role implies a hierarchy, broad object access, or authority in another
-institution. There is no modelled owner, teacher, or platform-support role.
-Sensitive operations, including membership management, publication, finance
-approval, and audit access, require explicit policies and object-level controls.
+institution. `owner` is selected as a future role but is not yet a model choice;
+there is no modelled teacher or platform-support membership role. Sensitive
+operations, including membership management, publication, finance approval,
+and audit access, require explicit policies and object-level controls.
 
 ### Django Groups and Permissions
 
