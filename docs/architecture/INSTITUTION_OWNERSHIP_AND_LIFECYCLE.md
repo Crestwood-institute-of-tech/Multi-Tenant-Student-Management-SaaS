@@ -1,9 +1,10 @@
 # Institution Ownership and Lifecycle Architecture
 
-**Status:** Proposed architecture. The project owner selected a dedicated
-`owner` membership role distinct from `institution_admin`; the role and
-workflows are not implemented. Details below require review before models,
-migrations, endpoints, or operational workflows are built.
+**Status:** Recommended architecture pending explicit project-owner approval.
+The project owner selected a dedicated `owner` membership role distinct from
+`institution_admin`; the role and workflows are not implemented. Decision
+statuses remain Proposed until approved. Do not treat these recommendations
+as deployed controls.
 
 ## 1. Current implementation boundary
 
@@ -60,12 +61,14 @@ or platform support access.
    auditable recovery operation must approve another user's owner assignment.
    An institution administrator cannot make themselves owner. A client
    supplied role, membership ID, or institution ID is never authority.
-5. **Bootstrap assignment.** Proposed default: create an institution in
-   `draft` and assign its initial owner membership in the same database
-   transaction. The owner is derived from the authenticated creator or an
-   explicitly authorized provisioning actor; ignore/reject a client-provided
-   role. Verification, self-service creation, and platform provisioning are
-   unresolved. Email verification is not currently implemented.
+5. **Bootstrap assignment.** Recommended default: create an institution in
+   `draft` and assign its initial active owner membership in the same database
+   transaction. The owner is the authenticated creator or a person selected
+   by an explicitly authorized provisioning actor; if the selected owner is
+   not the creator, require that person's explicit acceptance. Ignore/reject
+   a client-provided role. Creator eligibility, verification, self-service
+   abuse controls, and platform provisioning authority remain product-owner
+   decisions. Email verification is not currently implemented.
 6. **Ordinary administration.** Recommend permitting owners to perform a
    reviewed set of routine institution-administration operations, but not
    treating `owner` as a synonym for `institution_admin`. Each operation must
@@ -74,40 +77,77 @@ or platform support access.
 7. **Multiple owners and transfer.** Support more than one active owner to
    allow continuity. A transfer promotes an eligible active member to owner
    before demoting/removing the outgoing owner, in one transaction. Require
-   the incoming owner's explicit acceptance and audit the old/new owner,
-   reason, actor, and outcome. The outgoing owner may remain an active
-   `institution_admin` only if that is the explicitly selected new role.
+   the incoming owner's explicit acceptance and approval by an existing
+   authorized owner or the separately approved recovery authority. Audit the
+   old/new owner, reason, initiator, approver, and outcome. The outgoing owner
+   may remain an active `institution_admin` only if that is the explicitly
+   selected new role.
 8. **Relinquishment.** An owner may demote or leave only if another available
    active owner remains after the transaction. Otherwise require an atomic
    transfer/add-owner operation first.
 9. **Suspension, removal, and disabled accounts.** An owner membership with
    `suspended` or `removed` status does not count toward the invariant. An
-   inactive global user (`User.is_active=False`) is unavailable and should not
-   count either. Preserve removed membership history. Account deactivation is
-   global, so a future workflow must check every non-closed institution the
-   user owns before disabling that account.
-10. **Succession.** Prefer maintaining at least two active owners where
-    operationally appropriate, but do not make a two-owner minimum an
-    invariant without product approval. If all owners are unavailable, use a
-    separate, evidence-based, time-bounded platform recovery process with
-    independent approval and audit; do not silently elevate an administrator.
+   inactive global user (`User.is_active=False`) is unavailable and does not
+   count either. Preserve removed membership history. Before global account
+   deactivation, examine every non-closed institution where the user has an
+   owner membership. Reject the entire deactivation if any such institution
+   would have no other available owner; otherwise deactivate the account
+   without changing membership states. Do not accept a client-supplied subset
+   of affected institutions or automatically promote another member. Account
+   reactivation does not change memberships; an unchanged active owner
+   membership becomes available again when the account is active.
+10. **Succession and recovery.** One available owner is the invariant; a
+    second active owner is recommended for continuity but is not mandatory.
+    If no available owner remains because of legacy data, compromise, or an
+    exceptional operational failure, freeze ordinary ownership/lifecycle
+    changes and use a separate platform recovery path. Require identity and
+    authority evidence, an eligible successor's explicit acceptance, two
+    distinct platform actors (requester/executor and independent approver),
+    a reason, and a recorded review. The recovery transaction restores or
+    assigns an owner and records its audit event atomically. For a closed
+    institution, recovery and `closed` → `suspended` reopening are one
+    transaction; absent an eligible accepted successor or independent
+    approval, leave it closed. Do not silently elevate an administrator.
     No recovery role or workflow exists today.
 
 ## 3. Final active-owner invariant
 
-### Proposed invariant
+### Recommended invariant
 
-Every institution whose status is not `closed` must have at least one
-Membership with role `owner`, status `active`, and an associated active global
-user account. Preserve the active owner through `draft`, `active`, and
-`suspended` so a suspended institution can be reinstated without losing its
-accountable owner. On closure, require an active owner to authorize and be
-recorded in the closure event; subsequent membership/account cleanup for a
-closed institution follows the separately approved retention process.
+At every committed database state, each institution whose status is `draft`,
+`active`, or `suspended` must have at least one Membership for that institution
+with `role = owner`, `status = active`, and an associated User with
+`is_active = true`. These are the only qualifying values; an
+`institution_admin`, suspended/removed membership, or inactive account does
+not count. The institution and initial owner membership must be created in
+one transaction. Preserve an available owner through `draft`, `active`, and
+`suspended` so reinstatement retains an accountable owner.
+
+Immediately before an authorized closure commits, an available owner must
+request closure and be identified in the closure event. Once status is
+`closed`, the minimum-owner invariant no longer applies; subsequent owner
+membership/account cleanup is governed by the approved retention policy.
+Reopening is a distinct recovery operation and must not commit a non-closed
+institution without an available owner.
 
 This invariant does not grant tenant API access while an institution is
 suspended or closed. The existing resolver continues to govern ordinary
 tenant access.
+
+### Global account deactivation
+
+Deactivation is a change to the user's availability in every institution, not
+a per-institution membership operation. In one transaction, lock the target
+User, then re-query all institutions in which that user currently has an
+owner membership, and lock every affected non-closed Institution in UUID
+order. Re-read all memberships and owner account states after the institution
+locks. Permit deactivation only if each affected institution retains at least
+one other available owner; otherwise reject the whole operation with no
+account or membership change. Closed institutions do not block deactivation.
+Do not silently suspend memberships, promote another member, or partially
+disable an account based on only some institutions. Reactivation restores
+availability for unchanged active owner memberships but does not restore
+suspended or removed memberships.
 
 ### Transaction and database strategy
 
@@ -152,14 +192,16 @@ with the complete User set sorted before acquiring any Institution lock.
 Never acquire a newly discovered User lock while holding Institution locks:
 that reverses the order and can deadlock.
 
-This order closes the account-deactivation/assignment race because both
-operations first serialize on the same global User row for the user whose
-availability is changing. If deactivation wins, assignment waits and then
-sees the account disabled when it revalidates; if assignment wins, deactivation
-waits, re-queries owner memberships after obtaining the User lock, discovers
-the new institution dependency, and locks that institution before validating
-whether deactivation can proceed. It cannot miss a committed assignment to
-that user by relying on an earlier institution list.
+When both operations follow this protocol, it closes the
+account-deactivation/assignment race because they serialize on the same
+global User row for the user whose availability is changing. If deactivation
+wins, assignment waits and then sees the account disabled when it revalidates;
+if assignment wins, deactivation waits, re-queries owner memberships after
+obtaining the User lock, discovers the new institution dependency, and locks
+that institution before validating whether deactivation can proceed. It
+cannot miss a committed assignment to that user by relying on an earlier
+institution list. This is a property of the proposed protocol, not a guarantee
+of current code or uncoordinated writers.
 
 Every relevant write path must participate in this protocol; the locking
 proposal does not itself enforce that requirement. No path may lock an
@@ -173,9 +215,9 @@ idempotency strategy.
 
 An ordinary SQL `CHECK` cannot enforce a cross-row minimum owner count. Model
 validation, an unlocked count, Membership-row locks alone, or a service
-convention alone do not prove universal enforcement. The required database
-enforcement boundary remains unresolved; options and limitations are recorded
-under OWN-04 below and in the decision register. Do not claim universal
+convention alone do not prove universal enforcement. OWN-04 recommends a
+service protocol plus a PostgreSQL deferred invariant guard; the guard's
+design, approval, and coverage remain unresolved. Do not claim universal
 invariant enforcement until that boundary is approved, implemented, and
 validated for every supported and alternate write path.
 
@@ -206,24 +248,29 @@ Adding a new status later would require a reviewed model/constraint migration,
 data mapping, API/schema update, and lifecycle tests. No status migration is
 proposed here.
 
-### Proposed transition table
+### Recommended transition table
 
-This is a review proposal, not an implemented workflow. “Platform approver”
-means a separately authorized platform governance actor; it is not an
-institution membership role and no such actor/workflow currently exists.
+This is the recommended contract, not an implemented or approved workflow.
+“Platform approver” means a separately authorized platform governance actor;
+it is not an institution membership role, `is_staff`, or `is_superuser`, and no
+such actor/workflow currently exists. A transition that requires platform
+approval must be approved by a different human actor from its requester and
+executor. An emergency suspension may execute before review only to contain an
+immediate risk; a different platform approver must review it within the
+product-owner-approved deadline.
 
 | From | To | Initiator | Approver / executor | Required preconditions and outcome |
 |---|---|---|---|---|
-| Not created | `draft` | Authenticated eligible creator or authorized provisioning service | Creation service atomically assigns the initial active owner; any separate platform review is unresolved | Valid institution data; eligible owner identity; institution and owner membership commit together. No public business access is implied. |
-| `draft` | `active` | Active owner requests activation | Separate platform provisioning approver approves; no approval is implied by membership alone | At least one available active owner; identity/institution verification and required configuration complete. |
-| `draft` | `suspended` | Platform security/compliance function | Authorized platform actor executes and records reason | Emergency hold with evidence/reason; ordinary tenant routes become unavailable. |
-| `draft` | `closed` | Active owner requests cancellation | Platform reviewer approves; if multi-owner policy requires, another active owner also approves | No unresolved provisioning obligation; retention/legal hold and outstanding data/export obligations reviewed. |
-| `active` | `suspended` | Owner may request; platform security/compliance may initiate emergency action | Authorized platform actor executes; emergency action receives timely independent review | Recorded reason, scope, actor, evidence, and remediation path. Ordinary tenant access is blocked. |
-| `active` | `closed` | Active owner requests closure | Independent platform/compliance approver; second owner approval is recommended where multiple owners exist | Retention, legal hold, billing/contract, export, backup, and dependent-workflow review; active owner recorded at closure. |
-| `suspended` | `active` | Active owner requests reinstatement | Platform approver verifies remediation and approves | Suspension cause resolved; current owner and institution checks pass; reinstatement event recorded. |
-| `suspended` | `closed` | Active owner requests closure, or platform/legal process initiates it | Platform/compliance approver | Closure obligations and retention/legal review complete; record reason and actor. |
-| `closed` | `suspended` | Authorized platform recovery process only | Independent platform approver | The transaction must lock relevant User rows then the Institution row, re-read ownership, and prove at least one available active owner exists before committing the transition. If none exists, the institution remains closed until ownership recovery and reopening can be performed atomically; audit both outcomes. |
-| `closed` | `draft` or direct `active` | Not allowed as an ordinary transition | Not applicable | No direct transition. A distinct reviewed reopen operation is required; normal activation approval then governs `suspended` → `active`. |
+| Not created | `draft` | Authenticated eligible creator requests creation, or authorized provisioning service provisions | Creation service atomically creates the institution and initial owner membership | Eligible creator/provisioner; owner is the creator or has explicitly accepted; no public business access is implied. |
+| `draft` | `active` | Active owner requests activation | Independent platform provisioning approver verifies and approves | Available active owner; identity/institution checks and required configuration complete. |
+| `draft` | `suspended` | Platform security/compliance initiates | Authorized platform actor executes; separate approver reviews | Immediate, evidenced security/compliance hold; ordinary tenant routes become unavailable. |
+| `draft` | `closed` | Active owner requests cancellation | Independent platform approver approves | Provisioning obligations and retention/legal/export obligations reviewed; active owner recorded. |
+| `active` | `suspended` | Owner may request; platform security/compliance may initiate emergency action | Authorized platform actor executes; independent approver reviews an emergency action | Recorded reason, scope, actor, evidence, and remediation path. Ordinary tenant access is blocked. |
+| `active` | `closed` | Active owner requests closure | Independent platform/compliance approver approves | Retention, legal hold, billing/contract, export, backup, and dependent-workflow review; available owner and all approvals recorded. |
+| `suspended` | `active` | Active owner requests reinstatement | Independent platform approver verifies remediation and approves | Suspension cause resolved; available owner and institution checks pass; reinstatement event recorded. |
+| `suspended` | `closed` | Active owner requests closure, or platform/legal process initiates it | Independent platform/compliance approver approves | Closure obligations and retention/legal review complete; available owner recorded for an owner-requested closure. |
+| `closed` | `suspended` | Authorized platform recovery process only | Different platform approver independently approves the recovery/reopen request | Restore or assign an eligible, accepting available owner and transition in the same transaction; record evidence, reason, actors, and outcome. If preconditions fail, leave closed. |
+| `closed` | `draft` or direct `active` | Not allowed | Not applicable | No direct transition. A distinct recovery may only reopen to `suspended`; ordinary approval then governs `suspended` → `active`. |
 
 All other transitions are denied by default. In particular, do not move an
 institution back to `draft`, reopen it directly to `active`, or hard-delete it
@@ -240,16 +287,17 @@ through ordinary product workflows.
 - The final-owner invariant applies before and after reopening: `closed` →
   `suspended` cannot commit without an available active owner. Lock ownership
   participants before the Institution row, validate and change lifecycle in
-  the same transaction. If there is no available owner, keep the institution
-  closed; an approved recovery must assign/restore an owner and reopen
-  atomically. This prevents a non-closed institution from being created
-  without an accountable owner by reopening.
+  the same transaction. If no owner is available, a separately approved
+  recovery must verify and assign/restore an eligible person's accepted owner
+  membership and reopen atomically. Otherwise, keep the institution closed.
+  There is no direct `closed` → `active` path.
 - Institution lifecycle changes do not silently change Membership status or
   session state. Each request still resolves current institution and
   membership status; account deactivation and session invalidation follow
   their own approved contract.
-- `closed` is terminal for ordinary workflows. Exceptional reopening is
-  separate, audited, and staged through `suspended`.
+- `closed` is terminal for ordinary workflows. Only the independent,
+  evidence-based platform recovery process may reopen it, staged through
+  `suspended`; an existing owner cannot bypass the platform approval.
 
 ## 5. Required audit events
 
@@ -257,10 +305,13 @@ The future audit store should be append-only and institution-scoped. Each event
 must include a stable event ID, UTC timestamp, institution ID, actor identity
 (user or explicitly identified system/platform actor), action, target
 membership/user where applicable, previous and resulting role/status,
-reason/purpose, outcome, and request/correlation ID. Approval events record
-the approver separately from the initiator. Record only the minimum metadata
-needed; never store credentials, session tokens, invitation secrets, or
-unnecessary student payloads.
+reason/purpose, outcome, and request/correlation ID. Record the initiator,
+executor, and approver as distinct attributed principals where their roles
+differ; one person must not satisfy a required independent approval. A global
+account deactivation affecting multiple institutions must be traceable from
+each affected institution, with one correlation ID linking the atomic
+operation. Record only the minimum metadata needed; never store credentials,
+session tokens, invitation secrets, or unnecessary student payloads.
 
 | Event | Required detail |
 |---|---|
@@ -269,6 +320,7 @@ unnecessary student payloads.
 | Ownership transfer | Outgoing and incoming owner IDs, initiator, approver(s), both membership changes, reason, and atomic outcome |
 | Owner relinquishment/removal | Actor, affected owner, successor owner(s), resulting membership role/status, reason, and invariant check outcome |
 | Owner suspension/reinstatement | Actor, affected owner, reason/evidence, approver, prior/new status, and resulting available-owner count |
+| Global account deactivation | Account actor/approver, target user, every affected institution, owner-state validation, reason, and atomic outcome |
 | Ownership succession/recovery | Requester, unavailable owner(s), evidence, independent approver, successor identity, scope/expiry if platform-assisted, and review outcome |
 | Institution activation | Initiator, verifier/approver, verification references, old/new status, owner at activation, and outcome |
 | Institution suspension | Initiator/executor, reason/evidence, scope, approver or emergency-review deadline, old/new status, and outcome |
@@ -276,10 +328,17 @@ unnecessary student payloads.
 | Institution closure | Initiator, approver(s), reason, retention/legal/export checks, active owner at closure, old/new status, and outcome |
 | Institution reopening | Platform recovery actor, independent approver, justification, old/new status (`closed` → `suspended`), and outcome |
 
-Successful state changes and their audit records commit atomically. Audit
-records cannot be updated/deleted through ordinary application permissions.
-Audit read/export authorization, retention, integrity verification, and
-emergency access remain separate decisions.
+Successful state changes and their success audit records commit in the same
+database transaction; failure to insert the event rolls back the state change.
+After a rejected transaction, any separately recorded security event must be
+explicitly marked as a failed attempt and must never represent a committed
+change. Ordinary application database roles may insert/read audit events as
+authorized but must not update/delete them. Use database privileges and an
+immutable-write guard, separate table ownership from the application role, and
+restrict privileged maintenance. A database owner/superuser can bypass these
+controls, so privileged access must be tightly limited and independently
+reviewed. Audit reader/export authorization, retention, external tamper
+evidence, and emergency access require separate policy decisions.
 
 ## 6. PostgreSQL concurrency test strategy
 
@@ -356,46 +415,64 @@ audit rows, not merely HTTP status.
 
 ## 7. Database enforcement boundary (OWN-04 — Proposed)
 
-No existing decision settles how the invariant is enforced against every
-write path. Keep this decision Proposed; service-level locking is an
-architectural recommendation, not universal enforcement.
+Recommended target: require both service-level transactional authorization and
+audit, and a PostgreSQL-specific deferred invariant guard. Neither exists in
+the application today. OWN-04 remains Proposed until the project owner
+approves permitted writers and PostgreSQL tests prove the chosen database
+mechanism.
 
 | Option | Advantages | Limitations and required safeguards |
 |---|---|---|
-| Strict service-level transactional locking | Reuses the shared User-then-Institution lock order; business rules and audit events remain explicit and testable; simpler portability and migration burden | Only protects writes that use the protocol. Direct SQL, bulk updates, alternate services, admin actions, management commands, and jobs can bypass it unless restricted, reviewed, and tested. Database credentials/permissions and write-path inventory must support the restriction. |
-| PostgreSQL-specific enforcement (for example, carefully designed triggers or other database mechanisms) | Can protect selected direct/alternate writes that bypass application services; keeps some invariant checks near persisted state | Cross-row minimums are not ordinary CHECK constraints. Trigger visibility, transaction timing, multi-row statement ordering, role/account changes, audit atomicity, and lock ordering are complex; triggers can deadlock with service locks or fail to cover privileged/bulk paths if poorly designed. Must share or deliberately coordinate the lock protocol and be proven with PostgreSQL concurrency tests. |
+| Strict service-level transactional locking | Reuses the shared User-then-Institution lock order; business authorization and audit attribution remain explicit and testable; simpler portability and migration burden | Guarantees the invariant only for writes that use the protocol. Direct SQL, bulk updates, alternate services, admin actions, commands, and jobs can bypass it unless prohibited or routed through the service. |
+| PostgreSQL-specific deferred invariant guard | Can reject covered transactions whose final state violates the invariant, including selected direct/bulk DML that bypasses application services | Does not authorize actors or supply trustworthy initiator/approver audit. Coverage requires checks for Membership writes, `User.is_active`, and Institution creation/status changes, including every affected institution. Cross-row checks are not ordinary `CHECK` constraints. Trigger timing, concurrent visibility, multi-row ordering, deadlocks, transaction-role bypasses, and restore/replication behavior require explicit PostgreSQL design and tests. |
+| Hybrid (recommended) | Service provides authorization, validation, deterministic User-then-Institution locks, and atomic audit; database guard provides an independent final-state check for covered writes | Does not cover privileged database-owner/superuser bypass, disabled triggers, or untested maintenance/restore paths. Database roles must restrict ordinary DML bypasses, and all permitted writers must be inventoried and verified. |
 
-Approval must define which writers are permitted, how direct/bulk/admin paths
-are restricted or covered, whether PostgreSQL-specific enforcement is
-required, and how the strategy is tested. Until then, neither option may be
-described as universally enforcing the invariant.
+The service guarantee applies only when every supported application path uses
+the protocol. A database guard can extend the invariant check to ordinary
+covered SQL writes but cannot make a bypassing writer authorized or correctly
+audited. The guard must validate the transaction's final state, allow valid
+intermediate states within bootstrap/transfer/recovery transactions, and
+serialize checks consistently with service locks. It must include global
+account deactivation across all affected non-closed institutions. A plain
+Membership constraint/trigger alone cannot account for changes to
+`User.is_active`; a plain account trigger cannot prove membership/lifecycle
+consistency. No enforcement guarantee may be claimed until concurrent tests
+prove the complete set of permitted paths, including bulk statements and
+failures.
 
-## 8. Decisions still requiring approval
+## 8. Recommendations and remaining approval
 
-- Whether the final-owner invariant applies to every non-closed institution as
-  proposed, and how institution-wide account disablement/recovery works.
-- Whether creator self-service is allowed, what identity verification is
-  required, and whether platform activation approval is mandatory.
-- Exact owner powers, including which ordinary administration actions are
-  shared with `institution_admin`; owners are not automatically
-  institution-admins or unrestricted data readers.
-- Whether one active owner is sufficient or a recommended/required
-  two-owner succession policy should exist.
-- Owner addition, target acceptance, transfer approval, relinquishment
-  semantics, emergency succession evidence, and independent approval.
-- Which actor may suspend/reinstate/close/reopen institutions, required reason
-  codes, review deadlines, and whether closed institutions may ever reopen.
-- Closure effects on billing, exports, jobs, legal holds, data retention, and
-  backups.
-- Audit schema, append-only enforcement, access, retention, and failed-attempt
-  recording.
-- PostgreSQL-specific deferred trigger/constraint defense beyond the
-  shared User-then-Institution lock protocol (OWN-04).
+The recommendations in OWN-01 through OWN-04 and INS-01/02 are individually
+specified in the decision register; none is marked Accepted. The implementation
+contract recommended here is: dedicated `owner` distinct from
+`institution_admin`; one accepted, available owner for each non-closed
+institution; global deactivation rejected if it would orphan any such
+institution; no automatic promotion; exceptional recovery by an independently
+approved platform process; ordinary lifecycle transitions initiated by an
+owner and approved/executed by a separate platform actor; closure terminal
+except for audited recovery to `suspended`; service transactions plus a
+PostgreSQL final-state guard; and atomic, protected audit records.
 
-The project-owner-selected `owner` role representation is not an approval of
-these implementation details, the final-owner invariant, lifecycle
-transitions, or any role/action grant. Keep the decision-register entries
-Proposed until each decision is explicitly reviewed.
+The project owner must still decide:
+
+- Creator eligibility, verification/evidence, abuse controls, and whether
+  self-service creation is allowed.
+- Which platform governance actors can independently approve activation,
+  suspension review, closure, reinstatement, and break-glass recovery; the
+  emergency-review deadline and evidence standard.
+- How each existing institution receives its initial owner. Do not infer this
+  from `institution_admin`; resolve every institution explicitly before
+  migration.
+- Which ordinary administration actions, if any, are shared with
+  `institution_admin`; the owner role itself confers no implicit grants.
+- Permitted database writers, database-role restrictions, guard feasibility,
+  controlled bypass/restore procedure, and required PostgreSQL proof.
+- Closure effects, legal holds, billing, export, backup, personal-data and
+  audit retention, audit readers, and external tamper evidence.
+
+Decision status is not implementation status: these recommendations do not
+change the current models, session authentication, tenant resolver, or
+authorization behavior.
 
 ## Related documentation
 

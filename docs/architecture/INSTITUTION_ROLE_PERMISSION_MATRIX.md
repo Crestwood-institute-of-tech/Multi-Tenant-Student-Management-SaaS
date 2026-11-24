@@ -77,13 +77,14 @@ view must explicitly list both roles after policy approval.
 | Platform support or cross-institution access | DENY |
 | Institution activation, suspension, closure, and reopening | CONDITIONAL (C32) |
 
-These are proposed defaults, not accepted owner permissions. Owner status does
-not imply `is_staff`, `is_superuser`, platform authority, or unrestricted
+These are recommended defaults, not accepted owner permissions. Owner status
+does not imply `is_staff`, `is_superuser`, platform authority, or unrestricted
 access to sensitive records. Ownership transitions and institution lifecycle
-changes must follow the proposed shared User-then-Institution PostgreSQL lock
-protocol. Whether strict service-path restrictions or PostgreSQL-specific
-database enforcement is required remains Proposed under OWN-04; these
-conditions do not claim universal invariant enforcement.
+changes must follow the recommended shared User-then-Institution PostgreSQL
+lock protocol and atomic audit rules. OWN-04 recommends a PostgreSQL deferred
+invariant guard in addition to the service; neither layer exists today, and
+neither claims universal enforcement before approval, writer inventory, and
+PostgreSQL validation.
 
 ## Proposed matrix
 
@@ -261,7 +262,8 @@ conditions do not claim universal invariant enforcement.
   not currently exist.
 - **C9 — Privilege/owner safeguards:** prohibit self-elevation and role grants
   beyond the actor's approved authority. There is no `owner` role in the model;
-  final-owner invariant, succession, and transfer authority are unresolved.
+  apply the recommended OWN-01 invariant, succession, and transfer safeguards
+  only after explicit approval and implementation.
 - **C10 — Export controls:** treat export as a separate permission; scope and
   minimize fields/rows, authorize the requested format and audience, apply
   retention/download controls, audit requester and purpose, and prevent
@@ -330,7 +332,7 @@ conditions do not claim universal invariant enforcement.
   append-only.
 - **C29 — Ownership transition:** require an existing authorized owner or
   separately approved recovery path, eligible target, target acceptance,
-  active-owner invariant, shared User-then-Institution transaction lock
+  OWN-01 available-owner invariant, shared User-then-Institution transaction
   protocol, and append-only audit. Initial bootstrap must occur atomically with
   institution creation; no client-selected role or unaudited self-elevation.
 - **C30 — Owner administration:** permit only the specific routine settings
@@ -338,16 +340,17 @@ conditions do not claim universal invariant enforcement.
   not inherit all `institution_admin` grants; the operation's permission must
   list owner explicitly.
 - **C31 — Owner membership authority:** require the approved owner/member
-  governance policy, prevent self-elevation, preserve the final-owner
-  invariant, require explicit target acceptance for owner assignment, and
-  audit initiator, approver, target, reason, and outcome. This does not create
-  an invitation or membership-management workflow.
+  governance policy, prevent self-elevation, preserve the OWN-01 final-owner
+  invariant (including global account deactivation across all institutions),
+  require explicit target acceptance for owner assignment, and audit
+  initiator, approver, target, reason, and outcome. This does not create an
+  invitation or membership-management workflow.
 - **C32 — Owner lifecycle authority:** require the approved lifecycle
   transition table, independent approval where specified, required
-  verification/remediation, final-owner protection (including an available
-  active owner before `closed` → `suspended` commits), the shared lock
-  protocol, and an append-only audit record. No lifecycle endpoint currently
-  exists.
+  verification/remediation, final-owner protection (including atomic owner
+  restoration/assignment with an independently approved `closed` → `suspended`
+  recovery), the shared lock protocol, and an append-only audit record. No
+  lifecycle endpoint currently exists.
 
 ## Cross-cutting boundaries and unresolved questions
 

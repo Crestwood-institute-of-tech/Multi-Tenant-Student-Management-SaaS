@@ -107,7 +107,7 @@ reinstatement is an explicit state transition.
 
 The project owner selected a dedicated `owner` membership role distinct from
 `institution_admin`. This is a future architecture direction, not a current
-`Membership.Role` value or implemented workflow. Proposed ownership semantics,
+`Membership.Role` value or implemented workflow. Recommended ownership semantics,
 initial assignment, final-owner protection, succession, lifecycle transitions,
 and required audits are documented in
 [Institution Ownership and Lifecycle](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
@@ -128,25 +128,33 @@ institution and normalized email, with expiry and revocation behavior defined.
 Membership removal and invitation revocation are distinct. Invitation
 acceptance, suspension, removal, role changes, ownership transitions, and
 institution status changes should be auditable with actor, target, time,
-reason, and outcome. The proposed invariant is at least one available active
-owner for each non-closed institution; it is not implemented. Enforce it with
-a shared PostgreSQL transaction protocol that locks relevant global User rows
-in deterministic UUID order, then affected Institution rows in deterministic
-UUID order, then re-reads current membership/account/institution state. Account
-deactivation must re-query owner memberships after acquiring the target User
-lock. If a post-lock reread shows the operation must authorize against or
-mutate a previously unknown User row, roll back and retry with the expanded
-sorted lock set; never acquire a User lock after an Institution lock. The user
-lock set covers operation participants/changed accounts; owner states are
-re-read after institution
-locks, and every write changing owner membership or account availability must
-serialize on the affected institution lock. This is a proposed protocol, not
-an implemented or universally enforced control. OWN-04 leaves open whether
-strict service write-path restrictions suffice or PostgreSQL-specific
-enforcement is also required. See the [ownership/lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
-and [decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md). PostgreSQL
-concurrency tests are required; SQLite alone does not establish row-lock
-safety.
+reason, and outcome. OWN-01 defines the recommended invariant: every `draft`,
+`active`, or `suspended` institution has at least one Membership with
+`role=owner`, `status=active`, and an associated `User.is_active=true`; closed
+institutions are exempt. It is not implemented. The recommended application
+protocol uses one PostgreSQL transaction, locks relevant User rows in
+deterministic UUID order, then affected Institution rows in deterministic UUID
+order, then re-reads current membership/account/institution state. Global
+account deactivation locks the target User first and re-queries every owned
+institution before locking institutions. If a post-lock reread discovers an
+additional User row needed for authorization or mutation, roll back and
+restart with the complete sorted lock set; never acquire a User lock after an
+Institution lock. Every owner membership, account-availability, and lifecycle
+write must use the same Institution lock protocol.
+
+OWN-04 recommends this service protocol for authorization and atomic audit
+plus a PostgreSQL-specific deferred final-state guard for covered writes. A
+service-only check can be bypassed by direct SQL, bulk updates, admin actions,
+commands, jobs, or alternate services. A database guard may catch ordinary
+covered DML but cannot authorize actors or supply trusted audit attribution;
+privileged database owners, disabled triggers, and untested maintenance paths
+can bypass it. Neither the protocol nor the guard exists in the application,
+and no concurrency guarantee is claimed. Both require project-owner approval,
+complete writer inventory, and PostgreSQL concurrency validation. See
+the [ownership/lifecycle proposal](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+and [decision register](./decisions/TENANT_AND_AUTH_DECISIONS.md). Preserve
+the existing session authentication and tenant-resolution behavior; this
+proposal does not change it.
 
 ```mermaid
 erDiagram
