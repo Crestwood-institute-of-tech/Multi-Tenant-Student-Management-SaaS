@@ -179,44 +179,79 @@ authorization contract when executed.
 **Problem.** Decide who may create an institution and when it becomes usable.
 
 **Alternatives.**
-- **Self-service onboarding with a verified creator as initial owner.**
-  Advantage: low-friction setup. Disadvantage: abuse, duplicate institutions,
-  and fraudulent claims need controls.
-- **Platform-provisioned institutions only.** Advantage: controlled
-  provisioning and identity verification. Disadvantage: operational bottleneck
-  and support dependency.
+- **Immediate self-service create/activate.** Advantage: lowest friction.
+  Disadvantage: permits institution squatting, duplicate tenants, impersonation,
+  and fraudulent owner claims without effective verification and review.
+- **Self-service request, then verified and approved provisioning.**
+  Advantage: users can initiate the process while institution creation and
+  activation remain gated. Disadvantage: requires a request workflow,
+  verification evidence, review capacity, and audit controls.
+- **Platform-only request intake.** Advantage: consistent centralized
+  screening. Disadvantage: operational bottleneck and no self-service path.
+  An authorized provisioning service may submit on behalf of an institution
+  only if it uses the same evidence, approval, owner-acceptance, and audit
+  contract.
 
 **Implementation fact.** `Institution.Status` currently contains `draft`,
 `active`, `suspended`, and `closed`; it has no `onboarding` value. The default
 status is `draft`, and tenant resolution currently permits `draft` context for
 an active member.
-**Security implications.** Creation does not grant access to another
-institution or bypass verification. Activation requires an explicit
-eligibility check and an available active owner under the selected ownership
-direction.
-**Operational implications.** Rate limits, duplicate/slug handling, abuse
-response, and whether platform review is required must be set before launch.
-**Recommended default.** Use the existing `draft` state for pre-activation;
-do not introduce `onboarding` without a separately reviewed migration. An
-authenticated eligible creator may request self-service creation, or an
-authorized provisioning service may create on behalf of an institution. In
-either case, create the institution and its initial active `owner` membership
-in the same transaction. If the owner is not the authenticated creator, require
-the owner's explicit acceptance before assignment. Keep `draft` tenant context
-compatible with the current resolver but expose no ordinary business APIs
-before activation. An active owner requests activation; an independently
-authorized platform approver verifies the institution and approves it.
+**Security implications.** A verified email proves control of an address, not
+that a person represents an institution. Verify institutional identity from an
+authoritative source and creator authority from a separately sourced official
+contact/authority record. A name, slug, domain, or client-supplied role is not
+proof. Protect verification evidence and owner-acceptance challenges; do not
+disclose whether a competing institution exists or automatically merge or
+reassign one. Activation requires a separate explicit decision and an
+available active owner under OWN-01.
+**Operational implications.** Rate limits, evidence exceptions, duplicate
+resolution, request/challenge expiry, retention, review capacity, and
+resubmission policy must be set before launch. The current backend has no
+email-verification state, provisioning workflow, platform approver capability,
+owner role, or audit store.
+**Recommended default.** Use the existing `draft` state for provisioned but
+not yet activated institutions; do not introduce `onboarding` without a
+separately reviewed migration. Require an authenticated active creator whose
+email control is verified and whose authority to represent the institution is
+independently evidenced. Keep a separate provisioning request (not a partially
+created Institution) with explicit request, verification, owner-acceptance,
+approval, rejection/expiry, and provisioning outcomes. A platform verifier
+establishes the institution's identity and the creator's authority; a
+separately authorized platform approver, distinct from the requester and
+proposed owner, explicitly approves or rejects provisioning. Require an
+eligible active account selected as initial owner to explicitly accept the
+institution-specific `owner` role before approval; if creator and owner are
+the same person, require a distinct affirmative acceptance action. A second
+approver reviews exceptions and conflicting claims. After all gates pass,
+create the Institution as `draft` and its initial active owner Membership in
+one transaction with the success audit events. Provisioning approval does not
+activate it: after setup, the owner requests activation and a separate
+platform approver authorizes it. Preserve current `draft` tenant-context
+resolution but expose no ordinary business APIs before activation.
 **Reasoning.** This preserves the current status contract and separates
 provisioning from tenant activation.
 **Consequences.** This is a recommended workflow, not an accepted
-self-service policy or implemented capability. The project owner must still
-decide creator eligibility, identity/institution evidence, abuse controls, and
-whether platform approval is mandatory for every activation. The selected
-owner representation is recorded under OWN-03; it is not implemented.
-Do not expose ordinary business APIs to a `draft` institution.
-**Related tests.** `TR-01`, `TR-05`, `MA-01`, `MA-08`. Add institution
-creation/activation cases before implementing provisioning; the existing
-strategy has no dedicated creation workflow case.
+self-service policy or implemented capability. Idempotent request retries
+must return the same request; duplicate or competing claims pause for
+independent review, while slug conflicts require a reviewed alternate slug.
+Expired/rejected requests create no tenant; failed provisioning rolls back
+both Institution and owner Membership. Abandoned challenges expire and are
+revoked; after provisioning, abandonment follows ordinary lifecycle and
+succession rules rather than deletion. Record request, verifier, approver,
+owner acceptance, provisioning, failure, and activation as distinct outcomes;
+the successful Institution/Membership creation and its success audit are
+atomic. The project owner must still decide acceptable evidence for
+unregistered/informal institutions, verified-email implementation, request
+and challenge lifetimes, evidence retention, exception thresholds, review
+staffing/separation of verifier and approver, and whether every activation
+requires platform approval. The selected owner representation is recorded
+under OWN-03; it is not implemented. Do not expose ordinary business APIs to
+a `draft` institution.
+**Related tests.** `TR-01`, `TR-05`, `MA-01`, `MA-08`. Add focused
+provisioning-request, evidence/authority, owner-acceptance, independent
+approval, duplicate/conflict, expiry/idempotency, atomic-create/audit-failure,
+and activation cases before implementation; existing tests do not cover this
+workflow.
 
 ### INS-02 — Suspension, archival, and deletion — Proposed
 
@@ -679,11 +714,13 @@ through removal, suspension, demotion, or account disablement.
   membership changes. Disadvantage: orphaned institution and routine dependence
   on privileged support.
 
-**Security implications.** An available owner is exactly a Membership for the
-institution with `role = owner`, `status = active`, and an associated global
-User with `is_active = true`. Every institution in `draft`, `active`, or
-`suspended` must have at least one such membership at each committed database
-state. The rule does not grant platform privileges.
+**Security implications.** Under the recommended target invariant, an
+available owner is exactly a Membership for the institution with
+`role = owner`, `status = active`, and an associated global User with
+`is_active = true`. After migration/backfill and before owner workflows are
+enabled, each `draft`, `active`, or `suspended` institution must have at least
+one such membership at each committed database state. The rule does not grant
+platform privileges and is not currently enforced.
 **Operational implications.** A separately authorized recovery process is
 required if the only owner is unreachable or compromised; that process must be
 audited.

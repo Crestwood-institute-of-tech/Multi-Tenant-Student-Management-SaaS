@@ -333,8 +333,11 @@ PostgreSQL validation.
 - **C29 — Ownership transition:** require an existing authorized owner or
   separately approved recovery path, eligible target, target acceptance,
   OWN-01 available-owner invariant, shared User-then-Institution transaction
-  protocol, and append-only audit. Initial bootstrap must occur atomically with
-  institution creation; no client-selected role or unaudited self-elevation.
+  protocol, and append-only audit. Initial bootstrap requires a verified and
+  approved provisioning request plus explicit owner acceptance before the
+  Institution and Membership are atomically created; do not automatically
+  assign the requester as owner or infer ownership from an existing
+  `institution_admin`. No client-selected role or unaudited self-elevation.
 - **C30 — Owner administration:** permit only the specific routine settings
   and administration operations explicitly approved for owners. `owner` does
   not inherit all `institution_admin` grants; the operation's permission must
