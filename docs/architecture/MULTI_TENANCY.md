@@ -112,11 +112,13 @@ initial assignment, final-owner protection, succession, lifecycle transitions,
 and required audits are documented in
 [Institution Ownership and Lifecycle](./INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md).
 The recommended provisioning path uses a separate request: verify creator
-identity/authority and institution identity, obtain initial-owner acceptance,
-then require independent platform approval before atomically creating a
-`draft` Institution and its active owner Membership. Activation is a later,
-separately approved transition. No such request, verifier, approver, verified
-email state, or owner-acceptance capability currently exists.
+eligibility and institution identity under a product-owner-approved process,
+obtain initial-owner acceptance, then require independent platform approval
+before atomically creating a `draft` Institution and its active owner
+Membership. No evidence source, eligibility threshold, approval authority, or
+retention period is set here. Activation is a later, separately approved
+transition. No such request, verifier, approver, verified-email state, or
+owner-acceptance capability currently exists.
 The selected role does not imply owner inherits all administrator permissions,
 holds multiple roles on one membership, or receives broad student/finance data
 access. Existing institutions require explicit owner assignment in a reviewed

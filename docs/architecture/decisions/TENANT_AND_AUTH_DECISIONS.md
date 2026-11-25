@@ -196,14 +196,16 @@ authorization contract when executed.
 `active`, `suspended`, and `closed`; it has no `onboarding` value. The default
 status is `draft`, and tenant resolution currently permits `draft` context for
 an active member.
-**Security implications.** A verified email proves control of an address, not
-that a person represents an institution. Verify institutional identity from an
-authoritative source and creator authority from a separately sourced official
-contact/authority record. A name, slug, domain, or client-supplied role is not
-proof. Protect verification evidence and owner-acceptance challenges; do not
-disclose whether a competing institution exists or automatically merge or
-reassign one. Activation requires a separate explicit decision and an
-available active owner under OWN-01.
+**Security implications.** Authentication and control of a contact address
+do not by themselves establish that a person represents an institution. The
+project owner must approve the verification evidence, identity/authority
+checks, exception path, and actors before implementation; this decision does
+not prescribe evidence sources or thresholds. A name, slug, domain, or
+client-supplied role alone must not grant ownership. Protect any evidence and
+owner-acceptance mechanism under an approved handling policy; do not disclose
+whether a competing institution exists or automatically merge or reassign
+one. Activation requires a separate explicit decision and an available active
+owner under OWN-01.
 **Operational implications.** Rate limits, evidence exceptions, duplicate
 resolution, request/challenge expiry, retention, review capacity, and
 resubmission policy must be set before launch. The current backend has no
@@ -211,23 +213,25 @@ email-verification state, provisioning workflow, platform approver capability,
 owner role, or audit store.
 **Recommended default.** Use the existing `draft` state for provisioned but
 not yet activated institutions; do not introduce `onboarding` without a
-separately reviewed migration. Require an authenticated active creator whose
-email control is verified and whose authority to represent the institution is
-independently evidenced. Keep a separate provisioning request (not a partially
-created Institution) with explicit request, verification, owner-acceptance,
-approval, rejection/expiry, and provisioning outcomes. A platform verifier
-establishes the institution's identity and the creator's authority; a
-separately authorized platform approver, distinct from the requester and
-proposed owner, explicitly approves or rejects provisioning. Require an
-eligible active account selected as initial owner to explicitly accept the
-institution-specific `owner` role before approval; if creator and owner are
-the same person, require a distinct affirmative acceptance action. A second
-approver reviews exceptions and conflicting claims. After all gates pass,
-create the Institution as `draft` and its initial active owner Membership in
-one transaction with the success audit events. Provisioning approval does not
-activate it: after setup, the owner requests activation and a separate
-platform approver authorizes it. Preserve current `draft` tenant-context
-resolution but expose no ordinary business APIs before activation.
+separately reviewed migration. Permit an authenticated active account to
+submit a separate provisioning request; decide whether more eligibility
+criteria or verified contact control are required before launch. Require an
+explicit verification decision under a product-owner-approved policy, without
+prescribing evidence sources, thresholds, or exceptions here. Recommend an
+explicit platform approval, by a future actor authorized for provisioning
+and distinct from the creator and proposed owner; do not infer this authority
+from current staff/superuser or membership permissions. Require a named
+initial owner with an active account and explicit acceptance of the
+institution-specific `owner` role before assignment; if creator and owner are
+the same person, request submission alone is not acceptance. Keep request,
+verification, owner acceptance, approval, rejection/expiry, and provisioning
+as separate outcomes. After all approved gates pass, create the Institution
+as `draft` and its initial active owner Membership atomically with the
+provisioning success audit. Provisioning approval does not activate it: after
+setup, the owner requests activation and an independently authorized platform
+actor decides under the separately proposed lifecycle policy. Preserve
+current `draft` tenant-context resolution but expose no ordinary business
+APIs before activation.
 **Reasoning.** This preserves the current status contract and separates
 provisioning from tenant activation.
 **Consequences.** This is a recommended workflow, not an accepted
@@ -240,10 +244,12 @@ revoked; after provisioning, abandonment follows ordinary lifecycle and
 succession rules rather than deletion. Record request, verifier, approver,
 owner acceptance, provisioning, failure, and activation as distinct outcomes;
 the successful Institution/Membership creation and its success audit are
-atomic. The project owner must still decide acceptable evidence for
-unregistered/informal institutions, verified-email implementation, request
-and challenge lifetimes, evidence retention, exception thresholds, review
-staffing/separation of verifier and approver, and whether every activation
+atomic. The project owner must still decide creator eligibility, accepted
+identity/institution/authority evidence and thresholds (including paths for
+informal or unregistered institutions), whether verified contact is required
+and how it is established, request and challenge lifetimes, evidence handling
+and retention, exception thresholds, which platform actors may verify or
+approve, separation of verifier and approver, and whether every activation
 requires platform approval. The selected owner representation is recorded
 under OWN-03; it is not implemented. Do not expose ordinary business APIs to
 a `draft` institution.
@@ -252,6 +258,9 @@ provisioning-request, evidence/authority, owner-acceptance, independent
 approval, duplicate/conflict, expiry/idempotency, atomic-create/audit-failure,
 and activation cases before implementation; existing tests do not cover this
 workflow.
+**Related documentation.**
+[`INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md`](../INSTITUTION_OWNERSHIP_AND_LIFECYCLE.md)
+defines alternatives and the per-decision approval questions.
 
 ### INS-02 — Suspension, archival, and deletion — Proposed
 
