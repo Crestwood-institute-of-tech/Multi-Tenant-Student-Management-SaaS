@@ -26,7 +26,7 @@ There is no owner role, ownership field, owner service, institution creation or
 lifecycle API, audit-event store, or final-owner enforcement. Model-level
 validation alone is not protection against bulk updates or direct database
 writes. The selected owner-role direction requires a future schema migration;
-this architecture PR makes no application or schema changes.
+this documentation change makes no application or schema changes.
 
 ## 2. Institution provisioning and initial owner assignment
 
@@ -37,54 +37,59 @@ login rejects inactive accounts. There is no email-verification state,
 institution request/verification/approval workflow, platform-provisioning
 authority, owner-acceptance flow, or provisioning audit trail. The
 recommendations below require new functionality and must not be interpreted
-as current checks or permissions. Do not enable self-service provisioning
-until verified-email and the authorized review/audit boundaries exist.
+as current checks or permissions. Do not enable provisioning until the
+project owner approves creator eligibility, verification, approval authority,
+and audit requirements, and the required controls exist.
 
 ### Recommended workflow
 
 Treat these as separate, attributable milestones, not synonyms:
 
 1. **Request:** An authenticated, active account submits a provisioning
-   request. Require control of a verified email address and enough evidence to
-   establish the creator's identity and authority to represent the named
-   institution. The creator need not be the eventual owner and receives no
-   membership or tenant authority merely by filing the request.
-2. **Verification:** A designated platform verifier checks that the
-   institution exists and that the creator is authorized to request it.
-   Recommended evidence is one authoritative source establishing institutional
-   identity plus a separately sourced official contact or authority record
-   confirming the representative. Email-domain control alone is insufficient
-   proof of authority. Record evidence references and findings, not copies of
-   sensitive documents in the audit trail. Conflicting or inadequate evidence
-   pauses the request for manual review; it is not treated as verified.
-3. **Initial-owner acceptance:** Identify one proposed owner by account,
-   verify that person's email/control and authority, and obtain an explicit,
-   one-time acceptance of the `owner` role for this institution before
-   provisioning. Acceptance must state the institution and role, use a
-   short-lived single-use challenge stored only as a digest, and be made by
-   the authenticated eligible owner account. If creator and proposed owner are
-   the same person, require a distinct affirmative owner-acceptance action;
-   request submission alone is not acceptance. Do not create an owner from an
-   unverified email or assign a role supplied by the client.
-4. **Approval:** A separately authorized platform provisioning approver
-   reviews the verification record, duplicate/conflict search, owner
-   acceptance, and request outcome, then explicitly approves or rejects
-   provisioning. The approver must differ from the creator and proposed owner.
-   Record verification and approval as distinct decisions; use a second
-   independent platform approver for exceptions, conflicting claims, or
-   overrides. No platform role, staff permission, support interface, or
-   approval capability currently exists. A future least-privilege
-   platform-only authority must be designed separately from institution
-   membership and Django `is_staff`/`is_superuser`.
+   request. Authentication and active account status are the minimum technical
+   prerequisites; whether additional creator eligibility criteria apply is a
+   product-owner decision. The creator may nominate themself or another
+   person as proposed owner, but the request grants neither person membership
+   or tenant authority.
+2. **Verification:** A future, explicitly authorized verification function
+   determines whether the institution exists and whether the creator is
+   eligible to request it under the product-owner-approved policy. Identity,
+   institutional authority, acceptable evidence, alternative evidence,
+   exceptions, and who can attest to verification are not defined by this
+   architecture. The verifier records a decision and non-sensitive evidence
+   references, not an invented evidence checklist. A disputed or inconclusive
+   case remains pending or is rejected under the approved process; it does not
+   advance by default.
+3. **Initial-owner acceptance:** Identify one proposed owner by account and
+   obtain that person's explicit,
+   institution-specific acceptance of the `owner` role before provisioning.
+   Acceptance must be attributable to the proposed owner and distinct from
+   the creator's request, including when both are the same person. A future
+   single-use challenge should be bound to the institution/request and stored
+   only as a digest; its delivery channel, identity-proofing method, and
+   expiry are product/security decisions, not defined here. At assignment the
+   owner must have an active account to satisfy the final-owner invariant.
+   Do not assign a role supplied by the client.
+4. **Approval:** A platform approval function, if approved by the project
+   owner, reviews the completed verification, proposed-owner acceptance, and
+   conflicts, then records an explicit provisioning decision. Recommend that
+   the approver be a separately authorized actor who is not the creator or
+   proposed owner. Whether verification and approval require different
+   people, whether exceptions need additional review, and which platform
+   actors may perform either function require explicit product-owner
+   decisions. No platform role, staff permission, support interface, or
+   approval capability currently exists. Do not infer this authority from
+   institution membership, Django `is_staff`, or `is_superuser`.
 5. **Provisioning:** Only after successful verification, owner acceptance,
    and approval, create the Institution with status `draft` and its initial
    active owner Membership in one transaction. Derive the owner from the
    accepted request; reject client-selected roles. Insert the successful
    provisioning and initial-assignment audit events and mark the request
    provisioned in the same transaction. If any write, including audit
-   insertion, fails, roll back both rows and record the failed attempt/request
-   outcome separately after rollback; never leave an institution without its
-   initial available owner or a success-shaped audit event.
+   insertion, fails, roll back the Institution, Membership, and success
+   events. Record a failure separately only after rollback succeeds; never
+   represent a failed transaction as successful or leave a non-closed
+   institution without its initial available owner.
 6. **Activation:** Provisioning approval does not activate the institution.
    After required setup is complete, the active owner separately requests
    activation and an independent platform approver approves it under the
@@ -95,15 +100,15 @@ Treat these as separate, attributable milestones, not synonyms:
 
 The provisioning request should be a separate future workflow record, not an
 extra meaning for `Institution.status` and not a partially created tenant.
-Recommended states are `pending_verification`, `pending_owner_acceptance`,
-`pending_approval`, `rejected`, `expired`, `cancelled`, and `provisioned`;
-only permitted forward transitions are allowed, with actor, timestamp, and
-reason recorded. Set request/challenge expiry, evidence-retention periods,
-and resubmission limits through explicit product/legal policy before launch.
-Before an Institution exists, provisioning audit entries are request-scoped
-and keyed by an immutable request ID; successful creation links that history
-to the new institution. Keep provisioning evidence in a restricted evidence
-store and place only non-sensitive references and decisions in audit records.
+Request states must distinguish at least pending work and terminal outcomes;
+the exact state machine is an implementation decision after product approval.
+Represent request/challenge expiry, evidence handling, retention, and
+resubmission limits only after the relevant owners approve those policies; no
+durations, evidence sources, or retention periods are set here. Before an
+Institution exists, provisioning events are request-scoped and keyed by an
+immutable request ID; successful creation links that history to the new
+institution. Store only the minimum approved, non-sensitive decision
+references in audit records; evidence access and retention require policy.
 
 ### Failed, abandoned, duplicate, and conflicting requests
 
@@ -111,17 +116,18 @@ store and place only non-sensitive references and decisions in audit records.
   returns the existing request, not a second institution. Apply rate limits
   and abuse monitoring. A genuinely new attempt after a terminal outcome gets
   a new request ID and repeats verification.
-- Expire unaccepted owner challenges and abandoned requests; revoke the
-  challenge on rejection, cancellation, replacement, or expiry. Do not retain
-  raw challenge tokens. Keep a minimal outcome/audit record under the approved
-  retention policy.
-- Search for an existing institution using authoritative identity evidence
-  and the canonical slug before approval. A name or slug match alone is not
-  proof that the requester controls that institution. A suspected duplicate
-  or competing ownership claim is placed on hold and independently reviewed;
-  never auto-merge institutions, reassign their owner, or disclose private
-  tenant information to the requester. A slug collision after verified
-  identity requires a reviewed alternate slug, not a second tenant.
+- Expire unaccepted owner challenges and abandoned requests under
+  product-owner-approved expiry rules; revoke a challenge on rejection,
+  cancellation, replacement, or expiry. Do not retain raw challenge tokens.
+  Keep outcome/audit data under an approved retention policy; do not invent
+  a duration.
+- Check for possible duplicate institutions and conflicting ownership claims
+  before approval, using a product-owner-approved matching and verification
+  procedure. A name or slug match alone must not trigger an automatic merge,
+  owner reassignment, or disclosure of private tenant information. Resolve
+  slug conflicts without creating a second institution for a verified
+  existing entity; the exact conflict resolution authority and process remain
+  to be approved.
 - A database uniqueness conflict or failed final transaction creates no
   partial Institution/Membership. Return an explicit outcome, preserve the
   request for an authorized retry where appropriate, and record the conflict
@@ -142,10 +148,11 @@ by-institution assignment; never infer an owner by promoting all or any
    invariant but must receive an owner through the recovery process before
    reopening.
 2. Collect an explicit proposed owner for each `draft`, `active`, and
-   `suspended` institution. Verify the person's identity and authority using
-   the same evidence standard as provisioning; obtain their explicit
-   acceptance and independent platform approval. Do not accept an inactive or
-   unverified account.
+   `suspended` institution. Verify identity and eligibility using the
+   product-owner-approved process; obtain the person's explicit acceptance
+   and required independent approval. The person must have an active account
+   at assignment to satisfy the available-owner invariant. Do not define an
+   unapproved evidence or email-verification requirement in the migration.
 3. Produce a reviewed assignment manifest mapping institution ID to accepted
    owner user ID, evidence reference, verifier, approver, and decision. Use
    two-person review for ambiguous or contested assignments. Resolve
@@ -172,29 +179,21 @@ institution, prior/new membership state, evidence reference, reason, and
 outcome. The current model has no `owner` value or audit record; this is a
 future migration and controlled backfill, not a description of existing data.
 
-### Alternatives and trade-offs
+### Outstanding provisioning decisions and recommendations
 
-- **Immediate self-service creation/activation:** lowest friction, but exposes
-  the service to impersonation, institution squatting, duplicate tenants, and
-  fraudulent owner claims. Do not recommend activation without independent
-  verification and approval.
-- **Provision a `draft` Institution as soon as a request arrives:** simplifies
-  the request UI but leaves abandoned/unverified tenant rows and complicates
-  slug conflicts, cleanup, and the owner invariant. Prefer a separate request
-  record and create the Institution only after all gates pass.
-- **Platform-only request intake:** offers stronger control but adds
-  operational delay and excludes self-service. Recommend authenticated
-  self-service requests subject to the same evidence and approval gates;
-  allow a future authorized provisioning service to submit the same
-  attributable request on an institution's behalf.
-- **Automatically assign the creator or highest-privilege existing member:**
-  convenient but does not establish authority or consent. Require explicit
-  owner selection, acceptance, and approval instead.
-- **Single reviewer versus separation of duties:** one reviewer is faster;
-  separate verification and approval, and a distinct creator/owner, reduce
-  collusion and error but increase staffing cost. Recommend independent
-  approval and a second approver for exceptions; the project owner must decide
-  whether all standard verifications also require a distinct verifier.
+The following are recommendations, not accepted decisions. Product-owner
+approval is required before implementation.
+
+| Decision | Alternatives and trade-offs | Recommendation | Product-owner input still required |
+|---|---|---|---|
+| Creator eligibility | Any authenticated account is simplest but increases abuse and low-quality requests; eligibility limited to a narrower verified representative pool may reduce abuse but excludes some legitimate institutions and requires policy/support. | Require an authenticated active account to submit; decide any additional eligibility before launch. The request itself grants no membership or tenant access. | Which persons/entities may request; whether email/account verification is required and how it is established. |
+| Institution and representative verification | Self-attestation is low-friction but weak against impersonation; human verification can assess context but costs time and consistency; automated/third-party checks may scale but add coverage, accuracy, privacy, and vendor risks. | Require an explicit verification decision before provisioning, but do not prescribe evidence types, providers, thresholds, or exceptions in architecture. | Acceptable evidence sources, required identity/authority checks, alternate paths, exception handling, verifier qualifications, and evidence access/retention. |
+| Initial owner selection and acceptance | Automatically assigning the creator is simple but assumes authority and consent; nominating a separate owner adds a step but makes the accountable party explicit. | Require a named, eligible active-account owner and their affirmative institution-specific acceptance, distinct from request submission. Never infer ownership from `institution_admin`; retain one membership role. | Owner eligibility and identity-assurance method; acceptance channel and expiry; whether one or multiple initial owners are required. The final-owner invariant requires at least one available owner, not a two-owner minimum. |
+| Platform approval | Automatic provisioning after checks reduces delay but removes a final review; platform review adds delay/cost but allows accountable decisions; platform-only intake centralizes control but adds friction. | Recommend an explicit provisioning approval after verification and owner acceptance, by an actor authorized for this purpose and distinct from the creator and proposed owner. This is a new platform function, not an existing `is_staff`/superuser grant. | Whether every request requires approval; which platform actors may verify/approve; whether verifier and approver must differ; exception/escalation rules and staffing. |
+| Provisioning timing and failure | Creating a tenant at request time simplifies setup but leaves abandoned/unverified records; a request-only record until approval avoids partial tenants but needs a request workflow. | Keep requests separate; after all approved gates pass, create `draft` Institution, active owner Membership, success audit, and provisioned request state atomically. | Request states, cancellation/retry behavior, idempotency policy, challenge expiry, rate limits, and duplicate/conflict resolution authority. |
+| Activation | Activating during provisioning shortens time-to-use but conflates checks and may expose a tenant prematurely; separate activation makes readiness auditable but adds a step. | Keep approval/provisioning distinct from activation; preserve `draft` status and current tenant resolver behavior, then use the separately proposed activation approval in INS-01/02. | Setup/readiness criteria and whether all activations need independent platform approval. |
+| Existing-institution assignment | Bulk-promoting administrators is easy but invents consent/authority and can transfer control incorrectly; individual review is slower but attributable and contestable. | Assign each institution explicitly using a reviewed manifest, owner acceptance, an approved verification/approval process, and atomic writes. Freeze owner-dependent writes during backfill; never auto-promote any administrator. | Per-institution owner choices, evidence/eligibility exceptions, review authority, treatment of closed or contested institutions, and acceptable migration window. |
+| Audit and evidence handling | Retaining extensive source documents improves later review but increases privacy/security exposure; retaining only decision metadata reduces exposure but may limit re-review. | Attribute request, verification, owner acceptance, approval, provisioning, failure, and activation separately. Keep success state and success audit atomic; never log raw challenges or unnecessary evidence. Do not set evidence/audit retention duration here. | Required fields, evidence store/access, retention/deletion, failed-attempt logging, audit readers, and any external integrity controls. |
 
 ## 3. Ownership representation
 
