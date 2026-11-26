@@ -41,6 +41,13 @@ as current checks or permissions. Do not enable provisioning until the
 project owner approves creator eligibility, verification, approval authority,
 and audit requirements, and the required controls exist.
 
+The persistence foundation records a requested institution name and canonical
+slug, requesting account, proposed initial owner, pending status, and timestamps.
+It does not provide a submission API or workflow, make eligibility decisions,
+or create an Institution or Membership. It intentionally does not enforce
+request uniqueness or idempotency; duplicate-claim handling, request outcomes,
+and any terminal states remain product-policy dependencies.
+
 ### Recommended workflow
 
 Treat these as separate, attributable milestones, not synonyms:
