@@ -140,3 +140,70 @@ class Membership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user_id} in {self.institution_id}: {self.role}"
+
+
+class InstitutionProvisioningRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    requesting_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="institution_provisioning_requests",
+    )
+    proposed_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="proposed_institution_provisioning_requests",
+    )
+    institution_name = models.CharField(max_length=255)
+    institution_slug = models.CharField(
+        max_length=63,
+        validators=[canonical_slug_validator],
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(institution_name__regex=r"\S"),
+                name="provision_req_name_nonblank",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    institution_slug__regex=r"^[a-z0-9]+(-[a-z0-9]+)*\Z"
+                ),
+                name="provision_req_slug_canonical",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=("pending",)),
+                name="provision_req_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("requesting_user", "created_at"),
+                name="provision_req_user_created_idx",
+            ),
+            models.Index(
+                fields=("institution_slug", "created_at"),
+                name="provision_req_slug_created_idx",
+            ),
+        ]
+
+    def clean_fields(self, exclude=None) -> None:
+        if self.institution_slug is not None:
+            self.institution_slug = self.institution_slug.strip().lower()
+        super().clean_fields(exclude=exclude)
+
+    def clean(self) -> None:
+        super().clean()
+        if self.institution_slug is not None:
+            self.institution_slug = self.institution_slug.strip().lower()
