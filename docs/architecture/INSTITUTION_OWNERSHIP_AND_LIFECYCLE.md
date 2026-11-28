@@ -23,10 +23,11 @@ The current code defines:
   context currently establishes ownership.
 
 There is no owner role, ownership field, owner service, institution creation or
-lifecycle API, audit-event store, or final-owner enforcement. Model-level
-validation alone is not protection against bulk updates or direct database
-writes. The selected owner-role direction requires a future schema migration;
-this documentation change makes no application or schema changes.
+lifecycle API, audit-event store, or final-owner enforcement. The versioned
+API accepts, lists, and retrieves institution provisioning requests, but does
+not verify, approve, or provision them. Model-level validation alone is not
+protection against bulk updates or direct database writes. The selected
+owner-role direction requires a future schema migration.
 
 ## 2. Institution provisioning and initial owner assignment
 
@@ -34,19 +35,23 @@ this documentation change makes no application or schema changes.
 
 The current custom User has a unique email and Django's active-account flag;
 login rejects inactive accounts. There is no email-verification state,
-institution request/verification/approval workflow, platform-provisioning
-authority, owner-acceptance flow, or provisioning audit trail. The
-recommendations below require new functionality and must not be interpreted
-as current checks or permissions. Do not enable provisioning until the
-project owner approves creator eligibility, verification, approval authority,
-and audit requirements, and the required controls exist.
+verification or approval workflow, platform-provisioning authority,
+owner-acceptance flow, or provisioning audit trail. A limited authenticated
+request API supports intake and requester-owned reads only; it performs no
+eligibility or verification checks and grants no permissions. The
+recommendations below require additional functionality and must not be
+interpreted as current checks or permissions. Do not provision institutions
+until the project owner approves creator eligibility, verification, approval
+authority, and audit requirements, and the required controls exist.
 
 The persistence foundation records a requested institution name and canonical
 slug, requesting account, proposed initial owner, pending status, and timestamps.
-It does not provide a submission API or workflow, make eligibility decisions,
-or create an Institution or Membership. It intentionally does not enforce
-request uniqueness or idempotency; duplicate-claim handling, request outcomes,
-and any terminal states remain product-policy dependencies.
+Authenticated users can submit requests and read only their own request history
+and details; history uses 20-item page-number pagination. Request submission
+does not make eligibility decisions or create an Institution or Membership.
+It intentionally does not enforce request uniqueness or idempotency;
+duplicate-claim handling, request outcomes, and any terminal states remain
+product-policy dependencies.
 
 ### Recommended workflow
 

@@ -127,6 +127,10 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_RATES": {
         "auth_login": env("AUTH_LOGIN_RATE", default="10/minute"),
+        "institution_provisioning": env(
+            "INSTITUTION_PROVISIONING_RATE",
+            default="10/minute",
+        ),
     },
 }
 

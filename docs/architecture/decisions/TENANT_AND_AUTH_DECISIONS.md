@@ -209,8 +209,10 @@ owner under OWN-01.
 **Operational implications.** Rate limits, evidence exceptions, duplicate
 resolution, request/challenge expiry, retention, review capacity, and
 resubmission policy must be set before launch. The current backend has no
-email-verification state, provisioning workflow, platform approver capability,
-owner role, or audit store.
+email-verification state, verification or approval workflow, platform
+approver capability, owner role, or audit store. Its authenticated
+provisioning-request API supports submission and requester-owned history/detail
+reads only; it creates no institution or membership.
 **Recommended default.** Use the existing `draft` state for provisioned but
 not yet activated institutions; do not introduce `onboarding` without a
 separately reviewed migration. Permit an authenticated active account to
