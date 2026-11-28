@@ -69,3 +69,14 @@ def test_openapi_schema_is_admin_protected_and_contains_health_routes(api_client
     assert "/api/v1/auth/logout/" in schema["paths"]
     assert "/api/v1/auth/me/" in schema["paths"]
     assert "/api/v1/institutions/{institution_slug}/context/" in schema["paths"]
+    request_collection = "/api/v1/institution-provisioning/requests/"
+    request_detail = "/api/v1/institution-provisioning/requests/{request_id}/"
+    assert request_collection in schema["paths"]
+    assert request_detail in schema["paths"]
+    assert "get" in schema["paths"][request_collection]
+    assert "post" in schema["paths"][request_collection]
+    assert "get" in schema["paths"][request_detail]
+    assert "page" in {
+        parameter["name"]
+        for parameter in schema["paths"][request_collection]["get"]["parameters"]
+    }
